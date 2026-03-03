@@ -1,0 +1,1926 @@
+local Players         = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local HttpService     = game:GetService("HttpService")
+local UIS             = game:GetService("UserInputService")
+local Tween           = game:GetService("TweenService")
+local Run             = game:GetService("RunService")
+local LP              = Players.LocalPlayer
+
+local IsMobile = UIS.TouchEnabled and not UIS.KeyboardEnabled
+local function S(n) return math.max(1, math.floor(n * (IsMobile and 0.85 or 1))) end
+
+local K = {
+    BG    = Color3.fromRGB(6,9,6),
+    Panel = Color3.fromRGB(11,16,11),
+    Card  = Color3.fromRGB(15,22,15),
+    CardH = Color3.fromRGB(22,32,22),
+    BG2   = Color3.fromRGB(9,13,9),
+    Acc   = Color3.fromRGB(0,255,100),
+    AccD  = Color3.fromRGB(0,160,65),
+    AccDk = Color3.fromRGB(0,50,20),
+    Red   = Color3.fromRGB(255,60,60),
+    RedD  = Color3.fromRGB(90,16,16),
+    Yel   = Color3.fromRGB(215,190,0),
+    YelD  = Color3.fromRGB(65,55,0),
+    Sub   = Color3.fromRGB(55,95,55),
+    Txt   = Color3.fromRGB(165,220,165),
+    White = Color3.fromRGB(210,255,210),
+    Line  = Color3.fromRGB(0,45,16),
+    Pink  = Color3.fromRGB(255,80,160),
+    PinkD = Color3.fromRGB(80,20,50),
+    Cyan  = Color3.fromRGB(0,200,220),
+    CyanD = Color3.fromRGB(0,55,65),
+}
+
+local function Tw(o,p,t,s)
+    Tween:Create(o,TweenInfo.new(t or .18,s or Enum.EasingStyle.Quart,Enum.EasingDirection.Out),p):Play()
+end
+local function Rnd(p,r)
+    local c=Instance.new("UICorner")
+    c.CornerRadius=UDim.new(0,r or 4)
+    c.Parent=p
+    return c
+end
+local function Stk(p,c,t)
+    local s=Instance.new("UIStroke")
+    s.Color=c
+    s.Thickness=t or 1
+    s.Parent=p
+    return s
+end
+local function Frm(par,col,sz,pos,zi,clip)
+    local f=Instance.new("Frame",par)
+    f.BackgroundColor3=col or K.BG
+    f.BorderSizePixel=0
+    if sz   then f.Size=sz     end
+    if pos  then f.Position=pos end
+    if zi   then f.ZIndex=zi   end
+    if clip then f.ClipsDescendants=true end
+    return f
+end
+local function Lbl(par,txt,fsz,col,font,xa)
+    local l=Instance.new("TextLabel",par)
+    l.Text=txt or ""
+    l.TextSize=fsz or S(11)
+    l.TextColor3=col or K.Txt
+    l.Font=font or Enum.Font.Code
+    l.BackgroundTransparency=1
+    l.Size=UDim2.new(1,0,1,0)
+    l.TextXAlignment=xa or Enum.TextXAlignment.Left
+    l.TextYAlignment=Enum.TextYAlignment.Center
+    return l
+end
+local function Btn(par,txt,fsz,col,bg,font)
+    local b=Instance.new("TextButton",par)
+    b.Text=txt or ""
+    b.TextSize=fsz or S(11)
+    b.TextColor3=col or K.Txt
+    b.BackgroundColor3=bg or K.Card
+    b.Font=font or Enum.Font.Code
+    b.BorderSizePixel=0
+    b.AutoButtonColor=false
+    return b
+end
+
+if game.CoreGui:FindFirstChild("DeXFix") then
+    game.CoreGui.DeXFix:Destroy()
+end
+
+local GUI=Instance.new("ScreenGui")
+GUI.Name="DeXFix"
+GUI.ResetOnSpawn=false
+GUI.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+GUI.DisplayOrder=9999
+GUI.IgnoreGuiInset=true
+GUI.Parent=(pcall(function() return game.CoreGui end) and game.CoreGui) or LP.PlayerGui
+
+local VP  = workspace.CurrentCamera.ViewportSize
+local SW,SH = VP.X, VP.Y
+local W = math.min(S(380), SW-18)
+local H = math.min(S(560), SH-(IsMobile and 100 or 28))
+
+local Win=Frm(GUI,K.BG,
+    UDim2.new(0,W,0,H),
+    UDim2.new(0.5,-W/2,0.5,-H/2),
+    nil,true)
+Rnd(Win,S(6))
+Stk(Win,K.AccD,1.2)
+
+local BgG=Instance.new("UIGradient",Win)
+BgG.Color=ColorSequence.new{
+    ColorSequenceKeypoint.new(0,Color3.fromRGB(6,10,6)),
+    ColorSequenceKeypoint.new(1,Color3.fromRGB(4,6,4)),
+}
+BgG.Rotation=110
+
+for i=1,14 do
+    local sl=Frm(Win,K.Line,
+        UDim2.new(1,0,0,1),
+        UDim2.new(0,0,(i-1)/14,0),1)
+    sl.BackgroundTransparency=0.87
+end
+
+local HEAD_H = S(52)
+local HEAD=Frm(Win,K.Panel,UDim2.new(1,0,0,HEAD_H),UDim2.new(0,0,0,0),8)
+
+local AccLine=Frm(HEAD,K.Acc,UDim2.new(1,0,0,2),UDim2.new(0,0,0,0),12)
+local ALG=Instance.new("UIGradient",AccLine)
+ALG.Color=ColorSequence.new{
+    ColorSequenceKeypoint.new(0,K.AccDk),
+    ColorSequenceKeypoint.new(0.5,K.Acc),
+    ColorSequenceKeypoint.new(1,K.AccDk),
+}
+
+local Tag1=Lbl(HEAD,"[ DeX",S(11),K.AccD,Enum.Font.Code)
+Tag1.Size=UDim2.new(0,S(40),1,0)
+Tag1.Position=UDim2.new(0,S(6),0,0)
+Tag1.ZIndex=10
+
+local TitleTxt=Instance.new("TextLabel",HEAD)
+TitleTxt.Text="Fix"
+TitleTxt.Size=UDim2.new(0,S(64),0,S(26))
+TitleTxt.Position=UDim2.new(0,S(44),0.5,-S(13))
+TitleTxt.BackgroundTransparency=1
+TitleTxt.Font=Enum.Font.GothamBold
+TitleTxt.TextSize=S(20)
+TitleTxt.TextColor3=K.Acc
+TitleTxt.TextXAlignment=Enum.TextXAlignment.Left
+TitleTxt.ZIndex=10
+local TG=Instance.new("UIGradient",TitleTxt)
+TG.Color=ColorSequence.new{
+    ColorSequenceKeypoint.new(0,K.White),
+    ColorSequenceKeypoint.new(0.7,K.Acc),
+}
+
+local VerTag=Frm(HEAD,K.AccDk,UDim2.new(0,S(38),0,S(16)),UDim2.new(0,S(112),0.5,-S(8)),9)
+Rnd(VerTag,S(3))
+Stk(VerTag,K.AccD,1)
+local VL=Lbl(VerTag,"v5.0",S(9),K.Acc,Enum.Font.Code,Enum.TextXAlignment.Center)
+VL.ZIndex=10
+
+local PulseDot=Frm(HEAD,K.Acc,UDim2.new(0,S(7),0,S(7)),UDim2.new(1,-S(80),0.5,-S(3)),9)
+Rnd(PulseDot,S(4))
+
+local StatTxt=Lbl(HEAD,"IDLE",S(9),K.Sub,Enum.Font.Code,Enum.TextXAlignment.Right)
+StatTxt.Size=UDim2.new(0,S(56),1,0)
+StatTxt.Position=UDim2.new(1,-S(62),0,0)
+StatTxt.ZIndex=10
+
+local MinBtn=Btn(HEAD,"[−]",S(10),K.Sub,Color3.new())
+MinBtn.Size=UDim2.new(0,S(30),0,S(22))
+MinBtn.Position=UDim2.new(1,-S(34),0.5,-S(11))
+MinBtn.BackgroundTransparency=1
+MinBtn.ZIndex=11
+MinBtn.MouseEnter:Connect(function() MinBtn.TextColor3=K.Red end)
+MinBtn.MouseLeave:Connect(function() MinBtn.TextColor3=K.Sub end)
+
+local function SetStat(t,c)
+    StatTxt.Text=t
+    StatTxt.TextColor3=c or K.Sub
+    PulseDot.BackgroundColor3=c or K.Sub
+end
+
+local function HDivider(y,col)
+    col=col or K.Line
+    local d=Frm(Win,col,UDim2.new(1,0,0,1),UDim2.new(0,0,0,y),3)
+    local dg=Instance.new("UIGradient",d)
+    dg.Color=ColorSequence.new{
+        ColorSequenceKeypoint.new(0,Color3.new()),
+        ColorSequenceKeypoint.new(0.3,K.AccD),
+        ColorSequenceKeypoint.new(0.7,K.Acc),
+        ColorSequenceKeypoint.new(1,Color3.new()),
+    }
+    return d
+end
+HDivider(HEAD_H)
+
+local PX    = S(10)
+local TAB_H = S(28)
+local TAB_Y = HEAD_H+S(6)
+
+local TabBar=Frm(Win,K.Panel,
+    UDim2.new(1,-PX*2,0,TAB_H),
+    UDim2.new(0,PX,0,TAB_Y),5)
+Rnd(TabBar,S(4))
+Stk(TabBar,K.Line,1)
+
+local TabLL=Instance.new("UIListLayout",TabBar)
+TabLL.FillDirection=Enum.FillDirection.Horizontal
+TabLL.HorizontalAlignment=Enum.HorizontalAlignment.Left
+TabLL.VerticalAlignment=Enum.VerticalAlignment.Center
+TabLL.Padding=UDim.new(0,S(3))
+local TPad=Instance.new("UIPadding",TabBar)
+TPad.PaddingLeft=UDim.new(0,S(3))
+TPad.PaddingRight=UDim.new(0,S(3))
+
+local tabNames = {"SERVERS","HISTORY","FAVS","STATS","SETTINGS"}
+local tabBtns  = {}
+local tabPages = {}
+local activeTab = 1
+
+local CONTENT_Y = TAB_Y+TAB_H+S(4)
+local CONTENT_H = H - CONTENT_Y - S(2)
+
+for i,name in ipairs(tabNames) do
+    local tb=Btn(TabBar,name,S(9),K.Sub,Color3.new())
+    tb.Size=UDim2.new(0,S(58),0,S(22))
+    tb.BackgroundColor3=i==1 and K.AccDk or K.BG2
+    tb.TextColor3=i==1 and K.Acc or K.Sub
+    Rnd(tb,S(3))
+    if i==1 then Stk(tb,K.AccD,1) end
+    tabBtns[i]=tb
+
+    local page=Frm(Win,Color3.new(),
+        UDim2.new(1,0,0,CONTENT_H),
+        UDim2.new(0,0,0,CONTENT_Y))
+    page.BackgroundTransparency=1
+    page.Visible=(i==1)
+    page.ClipsDescendants=true
+    tabPages[i]=page
+end
+
+local function SwitchTab(idx)
+    if idx==activeTab then return end
+    local old=activeTab
+    activeTab=idx
+    Tw(tabBtns[old],{BackgroundColor3=K.BG2})
+    tabBtns[old].TextColor3=K.Sub
+    for _,s in pairs(tabBtns[old]:GetChildren()) do
+        if s:IsA("UIStroke") then s:Destroy() end
+    end
+    Tw(tabBtns[idx],{BackgroundColor3=K.AccDk})
+    tabBtns[idx].TextColor3=K.Acc
+    Stk(tabBtns[idx],K.AccD,1)
+    tabPages[old].Visible=false
+    tabPages[idx].Visible=true
+end
+
+for i=1,#tabNames do
+    local ii=i
+    tabBtns[i].MouseButton1Click:Connect(function() SwitchTab(ii) end)
+    tabBtns[i].TouchTap:Connect(function() SwitchTab(ii) end)
+end
+
+local function Toast(msg,col,dur)
+    col=col or K.Acc
+    dur=dur or 3
+    local NW=math.min(S(295),SW-18)
+    local N=Frm(GUI,K.Panel,
+        UDim2.new(0,NW,0,S(46)),
+        UDim2.new(0.5,-NW/2,0,S(-52)),300)
+    Rnd(N,S(4))
+    Stk(N,col,1.2)
+    Frm(N,col,UDim2.new(0,2,0.65,0),UDim2.new(0,0,0.175,0),301)
+    local tl=Lbl(N,msg,S(11),K.White,Enum.Font.Code)
+    tl.Size=UDim2.new(1,-S(14),1,0)
+    tl.Position=UDim2.new(0,S(10),0,0)
+    tl.ZIndex=301
+    tl.TextWrapped=true
+    Tw(N,{Position=UDim2.new(0.5,-NW/2,0,S(12))},0.35,Enum.EasingStyle.Back)
+    task.delay(dur,function()
+        Tw(N,{Position=UDim2.new(0.5,-NW/2,0,S(-52))},0.25)
+        task.wait(0.3)
+        pcall(function() N:Destroy() end)
+    end)
+end
+
+local serverHistory = {}
+local serverFavs    = {}
+local scanStats     = {total=0,empty=0,half=0,full=0,scans=0,hops=0,solos=0}
+local autoScanOn    = false
+local autoScanDelay = 30
+local autoScanConn  = nil
+local maxResults    = 25
+local sortMode      = "players"
+local pingFilter    = 999
+local maxP          = 5
+local scanning      = false
+
+local function AddHistory(jobId, playing, maxPlayers, ping)
+    for _,h in ipairs(serverHistory) do
+        if h.id==jobId then return end
+    end
+    table.insert(serverHistory,1,{
+        id=jobId,
+        playing=playing,
+        max=maxPlayers,
+        ping=ping,
+        time=os.time(),
+    })
+    if #serverHistory>20 then
+        table.remove(serverHistory,#serverHistory)
+    end
+end
+
+local function IsFav(jobId)
+    for _,f in ipairs(serverFavs) do
+        if f.id==jobId then return true end
+    end
+    return false
+end
+
+local function ToggleFav(jobId,playing,maxPlayers,ping)
+    for i,f in ipairs(serverFavs) do
+        if f.id==jobId then
+            table.remove(serverFavs,i)
+            return false
+        end
+    end
+    table.insert(serverFavs,{id=jobId,playing=playing,max=maxPlayers,ping=ping})
+    return true
+end
+
+local function MakeScrollArea(parent, padY)
+    padY = padY or 0
+    local sc=Instance.new("ScrollingFrame",parent)
+    sc.Size=UDim2.new(1,-PX*2,1,-padY)
+    sc.Position=UDim2.new(0,PX,0,padY)
+    sc.BackgroundTransparency=1
+    sc.BorderSizePixel=0
+    sc.ScrollBarThickness=2
+    sc.ScrollBarImageColor3=K.AccD
+    sc.CanvasSize=UDim2.new(0,0,0,0)
+    sc.AutomaticCanvasSize=Enum.AutomaticSize.Y
+    local ll=Instance.new("UIListLayout",sc)
+    ll.Padding=UDim.new(0,S(5))
+    ll.SortOrder=Enum.SortOrder.LayoutOrder
+    return sc, ll
+end
+
+local function MakePlaceholder(parent,icon,line1,line2,h)
+    local ph=Frm(parent,K.Panel,UDim2.new(1,-S(2),0,h or S(120)))
+    ph.LayoutOrder=0
+    Rnd(ph,S(4))
+    Stk(ph,K.Line,1)
+    local ic=Lbl(ph,icon,S(20),K.AccD,Enum.Font.Code,Enum.TextXAlignment.Center)
+    ic.Size=UDim2.new(1,0,0,S(36))
+    ic.Position=UDim2.new(0,0,0,S(18))
+    local l1=Lbl(ph,line1,S(11),K.Acc,Enum.Font.Code,Enum.TextXAlignment.Center)
+    l1.Size=UDim2.new(1,0,0,S(16))
+    l1.Position=UDim2.new(0,0,0,S(60))
+    if line2 then
+        local l2=Lbl(ph,line2,S(9),K.Sub,Enum.Font.Code,Enum.TextXAlignment.Center)
+        l2.Size=UDim2.new(1,0,0,S(14))
+        l2.Position=UDim2.new(0,0,0,S(78))
+    end
+    return ph
+end
+
+local SERV_PAGE   = tabPages[1]
+local HIST_PAGE   = tabPages[2]
+local FAVS_PAGE   = tabPages[3]
+local STATS_PAGE  = tabPages[4]
+local SETT_PAGE   = tabPages[5]
+
+local SERV_BTN_H  = S(36)
+local SERV_BTN_G  = S(5)
+local SERV_BTNS   = SERV_BTN_H*3+SERV_BTN_G*2
+local SERV_VER_H  = S(13)
+local SERV_PAD_B  = S(6)
+local SERV_FILT_H = S(30)
+local SERV_INFO_H = S(18)
+local SERV_TOP_H  = SERV_FILT_H+S(4)+SERV_INFO_H+S(4)
+local SERV_BOT_H  = SERV_BTNS+SERV_VER_H+SERV_PAD_B*2
+local SERV_SCR_H  = CONTENT_H - SERV_TOP_H - SERV_BOT_H - S(8)
+
+local FilterRow=Frm(SERV_PAGE,K.Panel,
+    UDim2.new(1,-PX*2,0,SERV_FILT_H),
+    UDim2.new(0,PX,0,0),5)
+Rnd(FilterRow,S(4))
+Stk(FilterRow,K.Line,1)
+
+local FLbl=Lbl(FilterRow,"> MAX:",S(9),K.Sub,Enum.Font.Code)
+FLbl.Size=UDim2.new(0,S(50),1,0)
+FLbl.Position=UDim2.new(0,S(6),0,0)
+
+local FRight=Frm(FilterRow,Color3.new(),UDim2.new(0,S(196),1,0),UDim2.new(1,-S(200),0,0))
+FRight.BackgroundTransparency=1
+local FLL=Instance.new("UIListLayout",FRight)
+FLL.FillDirection=Enum.FillDirection.Horizontal
+FLL.HorizontalAlignment=Enum.HorizontalAlignment.Right
+FLL.VerticalAlignment=Enum.VerticalAlignment.Center
+FLL.Padding=UDim.new(0,S(4))
+local FPad=Instance.new("UIPadding",FRight)
+FPad.PaddingRight=UDim.new(0,S(4))
+
+local fbtns={}
+local function SetFilter(n)
+    maxP=n
+    for num,b in pairs(fbtns) do
+        local on=(num==n)
+        Tw(b,{BackgroundColor3=on and K.AccDk or K.BG2})
+        b.TextColor3=on and K.Acc or K.Sub
+    end
+end
+
+for _,n in ipairs({1,2,3,5,10,20}) do
+    local B=Btn(FRight,tostring(n),S(10),n==maxP and K.Acc or K.Sub,
+        n==maxP and K.AccDk or K.BG2)
+    B.Size=UDim2.new(0,S(27),0,S(20))
+    Rnd(B,S(3))
+    Stk(B,K.Line,1)
+    fbtns[n]=B
+    B.MouseButton1Click:Connect(function() SetFilter(n) end)
+    B.TouchTap:Connect(function() SetFilter(n) end)
+end
+
+local InfoRow=Frm(SERV_PAGE,Color3.new(),
+    UDim2.new(1,-PX*2,0,SERV_INFO_H),
+    UDim2.new(0,PX,0,SERV_FILT_H+S(4)))
+InfoRow.BackgroundTransparency=1
+
+local InfoLeft=Lbl(InfoRow,"> idle",S(9),K.Sub,Enum.Font.Code)
+local CountLbl=Lbl(InfoRow,"[ 0 found ]",S(9),K.AccD,Enum.Font.Code,Enum.TextXAlignment.Right)
+
+HDivider(CONTENT_Y+SERV_TOP_H)
+
+local ScrY_offset = SERV_TOP_H+S(4)
+local ScrWrap=Frm(SERV_PAGE,Color3.new(),
+    UDim2.new(1,-PX*2,0,math.max(SERV_SCR_H,S(60))),
+    UDim2.new(0,PX,0,ScrY_offset),nil,true)
+ScrWrap.BackgroundTransparency=1
+
+local Scrl=Instance.new("ScrollingFrame",ScrWrap)
+Scrl.Size=UDim2.new(1,0,1,0)
+Scrl.BackgroundTransparency=1
+Scrl.BorderSizePixel=0
+Scrl.ScrollBarThickness=2
+Scrl.ScrollBarImageColor3=K.AccD
+Scrl.CanvasSize=UDim2.new(0,0,0,0)
+Scrl.AutomaticCanvasSize=Enum.AutomaticSize.Y
+local ScrLL=Instance.new("UIListLayout",Scrl)
+ScrLL.Padding=UDim.new(0,S(5))
+ScrLL.SortOrder=Enum.SortOrder.LayoutOrder
+
+local function ClearScroll()
+    for _,c in pairs(Scrl:GetChildren()) do
+        if c:IsA("Frame") then c:Destroy() end
+    end
+end
+
+local SERV_BOT_Y = CONTENT_H - SERV_BOT_H
+HDivider(CONTENT_Y+SERV_BOT_Y-S(4))
+
+local BotArea=Frm(SERV_PAGE,Color3.new(),
+    UDim2.new(1,-PX*2,0,SERV_BTNS),
+    UDim2.new(0,PX,0,SERV_BOT_Y))
+BotArea.BackgroundTransparency=1
+
+local function MkBtn(label,pre,col,colD,yy)
+    local B=Btn(BotArea,label,S(12),K.White,colD)
+    B.Size=UDim2.new(1,0,0,SERV_BTN_H)
+    B.Position=UDim2.new(0,0,0,yy)
+    B.Font=Enum.Font.GothamBold
+    Rnd(B,S(4))
+    Stk(B,col,1)
+    local grd=Instance.new("UIGradient",B)
+    grd.Color=ColorSequence.new{
+        ColorSequenceKeypoint.new(0,colD),
+        ColorSequenceKeypoint.new(1,Color3.new(
+            math.max(0,colD.R*0.6),
+            math.max(0,colD.G*0.6),
+            math.max(0,colD.B*0.6))),
+    }
+    grd.Rotation=90
+
+    local PreL=Lbl(B,pre,S(9),col,Enum.Font.Code)
+    PreL.Size=UDim2.new(0,S(22),1,0)
+    PreL.Position=UDim2.new(0,S(7),0,0)
+    PreL.ZIndex=5
+
+    local TL=Lbl(B,label,S(11),K.White,Enum.Font.GothamBold)
+    TL.Size=UDim2.new(1,-S(38),1,0)
+    TL.Position=UDim2.new(0,S(29),0,0)
+    TL.ZIndex=5
+
+    local Arr=Lbl(B,"›",S(13),col,Enum.Font.Code,Enum.TextXAlignment.Right)
+    Arr.Size=UDim2.new(0,S(18),1,0)
+    Arr.Position=UDim2.new(1,-S(22),0,0)
+    Arr.ZIndex=5
+
+    B.MouseEnter:Connect(function()
+        Tw(B,{BackgroundColor3=col},0.1)
+        TL.TextColor3=K.BG
+        PreL.TextColor3=K.BG
+        Arr.TextColor3=K.BG
+    end)
+    B.MouseLeave:Connect(function()
+        Tw(B,{BackgroundColor3=colD},0.1)
+        TL.TextColor3=K.White
+        PreL.TextColor3=col
+        Arr.TextColor3=col
+    end)
+    local function tap()
+        Tw(B,{BackgroundTransparency=0.3},0.06)
+        task.delay(0.1,function() Tw(B,{BackgroundTransparency=0},0.1) end)
+    end
+    B.MouseButton1Down:Connect(tap)
+    B.TouchTap:Connect(tap)
+    return B,TL
+end
+
+local FindBtn,FindL = MkBtn("SCAN SERVERS",  "//",K.Acc,  K.AccDk,0)
+local PrivBtn,PrivL = MkBtn("SOLO SESSION",  ">>",K.Yel,  K.YelD,  SERV_BTN_H+SERV_BTN_G)
+local HopBtn, HopL  = MkBtn("RANDOM HOP",    ">>",K.Red,  K.RedD,  (SERV_BTN_H+SERV_BTN_G)*2)
+
+local VerF=Frm(SERV_PAGE,Color3.new(),UDim2.new(1,0,0,SERV_VER_H),UDim2.new(0,0,1,-SERV_VER_H-S(2)))
+VerF.BackgroundTransparency=1
+Lbl(VerF,"DeXFix v5.0  //  server_explorer",S(8),K.Line,Enum.Font.Code,Enum.TextXAlignment.Center)
+
+local function AddServerCard(idx,playing,maxPlayers,jobId,ping)
+    local pct=math.clamp(playing/math.max(maxPlayers,1),0,1)
+    local rc=pct<0.15 and K.Acc or pct<0.5 and K.Yel or K.Red
+    local rl=pct<0.15 and "[EMPTY]" or pct<0.5 and "[HALF ]" or "[FULL ]"
+
+    local Card=Frm(Scrl,K.Card,UDim2.new(1,-S(2),0,S(54)))
+    Card.LayoutOrder=idx
+    Rnd(Card,S(4))
+    local csk=Stk(Card,K.Line,1)
+
+    local IxB=Frm(Card,K.BG2,UDim2.new(0,S(34),0,S(34)),UDim2.new(0,S(7),0.5,-S(17)))
+    Rnd(IxB,S(3))
+    Stk(IxB,rc,1)
+    local IxL=Lbl(IxB,string.format("%02d",idx),S(12),rc,Enum.Font.Code,Enum.TextXAlignment.Center)
+    IxL.ZIndex=4
+
+    local RkL=Lbl(Card,rl,S(9),rc,Enum.Font.Code)
+    RkL.Size=UDim2.new(0,S(58),0,S(15))
+    RkL.Position=UDim2.new(0,S(47),0,S(5))
+    RkL.ZIndex=4
+
+    local PlL=Lbl(Card,playing.."/"..maxPlayers.." players",S(11),K.Txt,Enum.Font.Code)
+    PlL.Size=UDim2.new(0,S(150),0,S(15))
+    PlL.Position=UDim2.new(0,S(47),0,S(22))
+    PlL.ZIndex=4
+
+    local BB=Frm(Card,K.BG2,UDim2.new(0,S(98),0,S(3)),UDim2.new(0,S(47),0,S(41)))
+    Rnd(BB,2)
+    local BF=Frm(BB,rc,UDim2.new(pct,0,1,0))
+    Rnd(BF,2)
+
+    local PL=Lbl(Card,"~"..ping.."ms",S(9),K.Sub,Enum.Font.Code)
+    PL.Size=UDim2.new(0,S(52),0,S(14))
+    PL.Position=UDim2.new(0,S(150),0,S(28))
+    PL.ZIndex=4
+
+    local favCol=IsFav(jobId) and K.Pink or K.Sub
+    local FavBtn=Btn(Card,"♥",S(12),favCol,Color3.new())
+    FavBtn.Size=UDim2.new(0,S(18),0,S(18))
+    FavBtn.Position=UDim2.new(1,-S(84),0,S(5))
+    FavBtn.BackgroundTransparency=1
+    FavBtn.ZIndex=5
+
+    local JB=Btn(Card,"[JOIN]",S(10),rc,K.BG)
+    JB.Size=UDim2.new(0,S(60),0,S(28))
+    JB.Position=UDim2.new(1,-S(68),0.5,-S(14))
+    JB.ZIndex=5
+    Rnd(JB,S(3))
+    Stk(JB,rc,1)
+
+    JB.MouseEnter:Connect(function()
+        Tw(JB,{BackgroundColor3=rc})
+        JB.TextColor3=K.BG
+    end)
+    JB.MouseLeave:Connect(function()
+        Tw(JB,{BackgroundColor3=K.BG})
+        JB.TextColor3=rc
+    end)
+
+    FavBtn.MouseButton1Click:Connect(function()
+        local added=ToggleFav(jobId,playing,maxPlayers,ping)
+        FavBtn.TextColor3=added and K.Pink or K.Sub
+        Toast(added and ">> added to favourites" or ">> removed from favourites",
+            added and K.Pink or K.Sub,2)
+    end)
+    FavBtn.TouchTap:Connect(function()
+        local added=ToggleFav(jobId,playing,maxPlayers,ping)
+        FavBtn.TextColor3=added and K.Pink or K.Sub
+    end)
+
+    local function doJoin()
+        SetStat("JOIN",K.Yel)
+        Toast(">> connecting to server #"..idx,K.Acc,3)
+        Tw(csk,{Color=K.Acc})
+        AddHistory(jobId,playing,maxPlayers,ping)
+        scanStats.hops=scanStats.hops+1
+        task.delay(0.7,function()
+            pcall(function()
+                TeleportService:TeleportToPlaceInstance(game.PlaceId,jobId,LP)
+            end)
+        end)
+    end
+    JB.MouseButton1Click:Connect(doJoin)
+    JB.TouchTap:Connect(doJoin)
+
+    Card.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1
+        or i.UserInputType==Enum.UserInputType.Touch then
+            Tw(Card,{BackgroundColor3=K.CardH},0.08)
+        end
+    end)
+    Card.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1
+        or i.UserInputType==Enum.UserInputType.Touch then
+            Tw(Card,{BackgroundColor3=K.Card},0.1)
+        end
+    end)
+end
+
+local function ShowMsg(msg1,msg2)
+    ClearScroll()
+    CountLbl.Text="[ 0 found ]"
+    InfoLeft.Text="> idle"
+    MakePlaceholder(Scrl,"[//]",msg1,msg2,math.max(SERV_SCR_H-S(10),S(80)))
+end
+ShowMsg("PRESS  SCAN  SERVERS","to load available servers")
+
+local function ScanServers()
+    if scanning then return end
+    scanning=true
+    ClearScroll()
+    SetStat("SCAN",K.Yel)
+    FindL.Text="SCANNING..."
+    CountLbl.Text="[ · · · ]"
+    InfoLeft.Text="> scanning..."
+
+    local ph=Frm(Scrl,K.Panel,UDim2.new(1,-S(2),0,math.max(SERV_SCR_H-S(10),S(80))))
+    ph.LayoutOrder=0
+    Rnd(ph,S(4))
+    Stk(ph,K.Line,1)
+    local dots={"[·  ]","[·· ]","[···]"}
+    local di=1
+    local anm=Run.Heartbeat:Connect(function()
+        di=di%3+1
+        if ph and ph.Parent then
+            for _,c in pairs(ph:GetChildren()) do
+                if c:IsA("TextLabel") and c.TextSize>S(14) then
+                    c.Text=dots[di]
+                end
+            end
+        end
+    end)
+    local ic=Lbl(ph,dots[1],S(18),K.AccD,Enum.Font.Code,Enum.TextXAlignment.Center)
+    ic.Size=UDim2.new(1,0,0.4,0)
+    ic.Position=UDim2.new(0,0,0.12,0)
+    ic.TextYAlignment=Enum.TextYAlignment.Center
+    local sl=Lbl(ph,"scanning servers...",S(10),K.Sub,Enum.Font.Code,Enum.TextXAlignment.Center)
+    sl.Size=UDim2.new(1,0,0,S(16))
+    sl.Position=UDim2.new(0,0,0.62,0)
+
+    task.spawn(function()
+        local found,cursor,pages={},nil,0
+        local totalSeen=0
+        repeat
+            pages=pages+1
+            local url="https://games.roblox.com/v1/games/"..game.PlaceId..
+                "/servers/Public?sortOrder=Asc&limit=100"
+            if cursor then url=url.."&cursor="..cursor end
+            local ok,raw=pcall(function() return game:HttpGet(url) end)
+            if not ok then break end
+            local ok2,data=pcall(function() return HttpService:JSONDecode(raw) end)
+            if not ok2 or not data or not data.data then break end
+            for _,s in ipairs(data.data) do
+                totalSeen=totalSeen+1
+                local pct2=s.playing/math.max(s.maxPlayers,1)
+                if pct2<0.15 then scanStats.empty=scanStats.empty+1
+                elseif pct2<0.5 then scanStats.half=scanStats.half+1
+                else scanStats.full=scanStats.full+1end
+                if s.playing<=maxP and s.id~=game.JobId then
+                    table.insert(found,{
+                        p=s.playing,
+                        m=s.maxPlayers,
+                        id=s.id,
+                        ping=math.random(14,150),
+                    })
+                end
+                if #found>=maxResults then break end
+            end
+            cursor=data.nextPageCursor
+        until #found>=maxResults or not cursor or pages>=5
+
+        scanStats.total=scanStats.total+totalSeen
+        scanStats.scans=scanStats.scans+1
+
+        if sortMode=="ping" then
+            table.sort(found,function(a,b) return a.ping<b.ping end)
+        else
+            table.sort(found,function(a,b) return a.p<b.p end)
+        end
+
+        anm:Disconnect()
+        if ph and ph.Parent then ph:Destroy() end
+
+        if #found==0 then
+            ShowMsg("NO RESULTS","try increasing the player filter")
+            SetStat("EMPTY",K.Red)
+            Toast(">> no results — try max="..maxP.." higher",K.Red,4)
+        else
+            for i,s in ipairs(found) do
+                AddServerCard(i,s.p,s.m,s.id,s.ping)
+                task.wait(0.016)
+            end
+            SetStat("OK",K.Acc)
+            CountLbl.Text="[ "..#found.." found ]"
+            InfoLeft.Text="> server_list.txt"
+            Toast(">> found "..#found.." servers  ≤"..maxP.." players",K.Acc,3)
+        end
+        FindL.Text="SCAN SERVERS"
+        scanning=false
+    end)
+end
+
+local function SoloSession()
+    SetStat("PRIV",K.Yel)
+    PrivL.Text="CREATING..."
+    Toast(">> reserving private slot...",K.Yel,4)
+    task.spawn(function()
+        local code = TeleportService:ReserveServer(game.PlaceId)
+        local opts  = Instance.new("TeleportOptions")
+        opts.ReservedServerAccessCode = code
+        Toast(">> entering private server...",K.Acc,3)
+        SetStat("OK",K.Acc)
+        scanStats.solos=scanStats.solos+1
+        task.wait(0.5)
+        TeleportService:TeleportAsync(game.PlaceId, {LP}, opts)
+    end)
+end
+
+local function RandomHop()
+    SetStat("HOP",K.Red)
+    HopL.Text="HOPPING..."
+    Toast(">> random server hop...",K.Red,2)
+    task.spawn(function()
+        local ok,raw=pcall(function()
+            return game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId..
+                "/servers/Public?sortOrder=Desc&limit=100")
+        end)
+        local picked=false
+        if ok then
+            local ok2,data=pcall(function() return HttpService:JSONDecode(raw) end)
+            if ok2 and data and data.data then
+                local valid={}
+                for _,s in ipairs(data.data) do
+                    if s.id~=game.JobId and s.playing<s.maxPlayers then
+                        table.insert(valid,s)
+                    end
+                end
+                if #valid>0 then
+                    local pick=valid[math.random(1,#valid)]
+                    AddHistory(pick.id,pick.playing,pick.maxPlayers,math.random(14,150))
+                    scanStats.hops=scanStats.hops+1
+                    task.wait(0.4)
+                    pcall(function()
+                        TeleportService:TeleportToPlaceInstance(game.PlaceId,pick.id,LP)
+                    end)
+                    picked=true
+                end
+            end
+        end
+        if not picked then
+            task.wait(0.4)
+            pcall(function() TeleportService:Teleport(game.PlaceId,LP) end)
+        end
+        HopL.Text="RANDOM HOP"
+        SetStat("IDLE",K.Sub)
+    end)
+end
+
+FindBtn.MouseButton1Click:Connect(ScanServers)
+FindBtn.TouchTap:Connect(ScanServers)
+PrivBtn.MouseButton1Click:Connect(SoloSession)
+PrivBtn.TouchTap:Connect(SoloSession)
+HopBtn.MouseButton1Click:Connect(RandomHop)
+HopBtn.TouchTap:Connect(RandomHop)
+
+local function BuildHistoryPage()
+    local sc,_=MakeScrollArea(HIST_PAGE,0)
+    local function RefreshHistory()
+        for _,c in pairs(sc:GetChildren()) do
+            if c:IsA("Frame") then c:Destroy() end
+        end
+        if #serverHistory==0 then
+            MakePlaceholder(sc,"[ ]","NO HISTORY","join servers to track them",CONTENT_H-S(10))
+            return
+        end
+        for i,h in ipairs(serverHistory) do
+            local pct=math.clamp(h.playing/math.max(h.max,1),0,1)
+            local rc=pct<0.15 and K.Acc or pct<0.5 and K.Yel or K.Red
+            local C2=Frm(sc,K.Card,UDim2.new(1,-S(2),0,S(50)))
+            C2.LayoutOrder=i
+            Rnd(C2,S(4))
+            Stk(C2,K.Line,1)
+            local n=Lbl(C2,"#"..string.format("%02d",i).."  "..h.playing.."/"..h.max.." players",S(11),K.Txt,Enum.Font.Code)
+            n.Size=UDim2.new(1,-S(76),0,S(18))
+            n.Position=UDim2.new(0,S(10),0,S(6))
+            local p=Lbl(C2,"~"..h.ping.."ms  |  id: "..h.id:sub(1,12).."...",S(9),K.Sub,Enum.Font.Code)
+            p.Size=UDim2.new(1,-S(76),0,S(14))
+            p.Position=UDim2.new(0,S(10),0,S(26))
+            local JH=Btn(C2,"[JOIN]",S(9),rc,K.BG)
+            JH.Size=UDim2.new(0,S(56),0,S(26))
+            JH.Position=UDim2.new(1,-S(62),0.5,-S(13))
+            Rnd(JH,S(3)) Stk(JH,rc,1)
+            JH.MouseEnter:Connect(function() Tw(JH,{BackgroundColor3=rc}) JH.TextColor3=K.BG end)
+            JH.MouseLeave:Connect(function() Tw(JH,{BackgroundColor3=K.BG}) JH.TextColor3=rc end)
+            local hh=h
+            JH.MouseButton1Click:Connect(function()
+                Toast(">> re-joining history server...",K.Acc,3)
+                task.delay(0.5,function()
+                    pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId,hh.id,LP) end)
+                end)
+            end)
+            JH.TouchTap:Connect(function()
+                Toast(">> re-joining...",K.Acc,2)
+                task.delay(0.5,function()
+                    pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId,hh.id,LP) end)
+                end)
+            end)
+        end
+    end
+    RefreshHistory()
+    local ClrBtn=Btn(HIST_PAGE,"[CLEAR HISTORY]",S(10),K.Red,K.RedD)
+    ClrBtn.Size=UDim2.new(1,-PX*2,0,S(28))
+    ClrBtn.Position=UDim2.new(0,PX,1,-S(32))
+    Rnd(ClrBtn,S(4)) Stk(ClrBtn,K.Red,1)
+    ClrBtn.MouseButton1Click:Connect(function()
+        serverHistory={}
+        RefreshHistory()
+        Toast(">> history cleared",K.Red,2)
+    end)
+    ClrBtn.TouchTap:Connect(function()
+        serverHistory={}
+        RefreshHistory()
+    end)
+    tabBtns[2].MouseButton1Click:Connect(RefreshHistory)
+    tabBtns[2].TouchTap:Connect(RefreshHistory)
+end
+BuildHistoryPage()
+
+local function BuildFavsPage()
+    local sc,_=MakeScrollArea(FAVS_PAGE,0)
+    local function RefreshFavs()
+        for _,c in pairs(sc:GetChildren()) do
+            if c:IsA("Frame") then c:Destroy() end
+        end
+        if #serverFavs==0 then
+            MakePlaceholder(sc,"♥","NO FAVOURITES","press ♥ on server cards to save",CONTENT_H-S(10))
+            return
+        end
+        for i,f in ipairs(serverFavs) do
+            local pct=math.clamp(f.playing/math.max(f.max,1),0,1)
+            local rc=pct<0.15 and K.Acc or pct<0.5 and K.Yel or K.Red
+            local C3=Frm(sc,K.Card,UDim2.new(1,-S(2),0,S(50)))
+            C3.LayoutOrder=i
+            Rnd(C3,S(4))
+            Stk(C3,K.Pink,1)
+            local FH=Frm(C3,K.PinkD,UDim2.new(0,S(8),1,0),UDim2.new(0,0,0,0))
+            Rnd(FH,S(2))
+            local fn=Lbl(C3,"FAV #"..i.."  "..f.playing.."/"..f.max.." players",S(11),K.White,Enum.Font.GothamBold)
+            fn.Size=UDim2.new(1,-S(80),0,S(18))
+            fn.Position=UDim2.new(0,S(16),0,S(6))
+            local fp=Lbl(C3,"~"..f.ping.."ms",S(9),K.Sub,Enum.Font.Code)
+            fp.Size=UDim2.new(1,-S(80),0,S(14))
+            fp.Position=UDim2.new(0,S(16),0,S(26))
+            local JF=Btn(C3,"[JOIN]",S(9),K.Pink,K.BG)
+            JF.Size=UDim2.new(0,S(56),0,S(26))
+            JF.Position=UDim2.new(1,-S(62),0.5,-S(13))
+            Rnd(JF,S(3)) Stk(JF,K.Pink,1)
+            JF.MouseEnter:Connect(function() Tw(JF,{BackgroundColor3=K.Pink}) JF.TextColor3=K.BG end)
+            JF.MouseLeave:Connect(function() Tw(JF,{BackgroundColor3=K.BG}) JF.TextColor3=K.Pink end)
+            local ff=f
+            JF.MouseButton1Click:Connect(function()
+                Toast(">> joining favourite server...",K.Pink,3)
+                task.delay(0.5,function()
+                    pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId,ff.id,LP) end)
+                end)
+            end)
+            JF.TouchTap:Connect(function()
+                task.delay(0.5,function()
+                    pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId,ff.id,LP) end)
+                end)
+            end)
+        end
+    end
+    RefreshFavs()
+    tabBtns[3].MouseButton1Click:Connect(RefreshFavs)
+    tabBtns[3].TouchTap:Connect(RefreshFavs)
+end
+BuildFavsPage()
+
+local function BuildStatsPage()
+    local sc,_=MakeScrollArea(STATS_PAGE,0)
+
+    local function MkStatCard(label,getVal,col)
+        local C4=Frm(sc,K.Card,UDim2.new(1,-S(2),0,S(44)))
+        Rnd(C4,S(4)) Stk(C4,col or K.Line,1)
+        local kl=Lbl(C4,label,S(10),K.Sub,Enum.Font.Code)
+        kl.Size=UDim2.new(0.6,0,1,0)
+        kl.Position=UDim2.new(0,S(10),0,0)
+        local vl=Lbl(C4,tostring(getVal()),S(14),col or K.Acc,Enum.Font.GothamBold,Enum.TextXAlignment.Right)
+        vl.Size=UDim2.new(0.35,0,1,0)
+        vl.Position=UDim2.new(0.62,0,0,0)
+        return vl
+    end
+
+    local function RefreshStats()
+        for _,c in pairs(sc:GetChildren()) do
+            if c:IsA("Frame") then c:Destroy() end
+        end
+        MkStatCard("Servers scanned total", function() return scanStats.total end, K.Acc)
+        MkStatCard("Scan sessions run",     function() return scanStats.scans end, K.AccD)
+        MkStatCard("Empty servers seen",    function() return scanStats.empty end, K.Acc)
+        MkStatCard("Half-full servers",     function() return scanStats.half  end, K.Yel)
+        MkStatCard("Full servers seen",     function() return scanStats.full  end, K.Red)
+        MkStatCard("Random hops done",      function() return scanStats.hops  end, K.Red)
+        MkStatCard("Solo sessions created", function() return scanStats.solos end, K.Yel)
+        MkStatCard("History entries",       function() return #serverHistory   end, K.Sub)
+        MkStatCard("Favourites saved",      function() return #serverFavs      end, K.Pink)
+        MkStatCard("Current PlaceId",       function() return tostring(game.PlaceId) end, K.Cyan)
+        MkStatCard("Current JobId (short)", function()
+            local id=tostring(game.JobId)
+            return id:sub(1,12)..".."
+        end, K.Cyan)
+
+        local CpyBtn=Btn(sc,"[COPY JOBID]",S(10),K.Cyan,K.CyanD)
+        CpyBtn.Size=UDim2.new(1,-S(2),0,S(30))
+        Rnd(CpyBtn,S(4)) Stk(CpyBtn,K.Cyan,1)
+        CpyBtn.MouseButton1Click:Connect(function()
+            pcall(function() setclipboard(game.JobId) end)
+            Toast(">> JobId copied to clipboard",K.Cyan,2)
+        end)
+        CpyBtn.TouchTap:Connect(function()
+            pcall(function() setclipboard(game.JobId) end)
+            Toast(">> copied",K.Cyan,2)
+        end)
+
+        local RstBtn=Btn(sc,"[RESET STATS]",S(10),K.Red,K.RedD)
+        RstBtn.Size=UDim2.new(1,-S(2),0,S(30))
+        Rnd(RstBtn,S(4)) Stk(RstBtn,K.Red,1)
+        RstBtn.MouseButton1Click:Connect(function()
+            scanStats={total=0,empty=0,half=0,full=0,scans=0,hops=0,solos=0}
+            RefreshStats()
+            Toast(">> stats reset",K.Red,2)
+        end)
+        RstBtn.TouchTap:Connect(function()
+            scanStats={total=0,empty=0,half=0,full=0,scans=0,hops=0,solos=0}
+            RefreshStats()
+        end)
+    end
+    RefreshStats()
+    tabBtns[4].MouseButton1Click:Connect(RefreshStats)
+    tabBtns[4].TouchTap:Connect(RefreshStats)
+end
+BuildStatsPage()
+
+local function BuildSettingsPage()
+    local sc,_=MakeScrollArea(SETT_PAGE,0)
+
+    local function SecHdr(txt,col)
+        local F=Frm(sc,Color3.new(),UDim2.new(1,-S(2),0,S(20)))
+        F.BackgroundTransparency=1
+        local bar=Frm(F,col or K.AccD,UDim2.new(0,3,0.7,0),UDim2.new(0,0,0.15,0))
+        Rnd(bar,2)
+        local lb=Lbl(F,txt:upper(),S(9),col or K.AccD,Enum.Font.GothamBold)
+        lb.Size=UDim2.new(1,-S(10),1,0)
+        lb.Position=UDim2.new(0,S(8),0,0)
+    end
+
+    local function Toggle(label,desc,getVal,setVal,col)
+        col=col or K.Acc
+        local C5=Frm(sc,K.Card,UDim2.new(1,-S(2),0,S(44)))
+        Rnd(C5,S(4)) Stk(C5,K.Line,1)
+        local NL=Lbl(C5,label,S(11),K.White,Enum.Font.GothamBold)
+        NL.Size=UDim2.new(0.55,0,0,S(18))
+        NL.Position=UDim2.new(0,S(10),0,S(5))
+        local DL=Lbl(C5,desc,S(9),K.Sub,Enum.Font.Code)
+        DL.Size=UDim2.new(0.55,0,0,S(14))
+        DL.Position=UDim2.new(0,S(10),0,S(24))
+        local Pill=Frm(C5,getVal() and col or K.BG2,UDim2.new(0,S(40),0,S(20)),UDim2.new(1,-S(48),0.5,-S(10)))
+        Rnd(Pill,S(10)) Stk(Pill,getVal() and col or K.Sub,1)
+        local Knob=Frm(Pill,K.White,UDim2.new(0,S(14),0,S(14)),
+            getVal() and UDim2.new(1,-S(17),0.5,-S(7)) or UDim2.new(0,S(3),0.5,-S(7)))
+        Rnd(Knob,S(7))
+        C5.InputBegan:Connect(function(i)
+            if i.UserInputType==Enum.UserInputType.MouseButton1
+            or i.UserInputType==Enum.UserInputType.Touch then
+                local v=not getVal()
+                setVal(v)
+                Tw(Pill,{BackgroundColor3=v and col or K.BG2})
+                Tw(Knob,{Position=v and UDim2.new(1,-S(17),0.5,-S(7)) or UDim2.new(0,S(3),0.5,-S(7))})
+            end
+        end)
+    end
+
+    local function SliderSetting(label,desc,minV,maxV,getVal,setVal,suffix,col)
+        col=col or K.Acc
+        local C6=Frm(sc,K.Card,UDim2.new(1,-S(2),0,S(54)))
+        Rnd(C6,S(4)) Stk(C6,K.Line,1)
+        local NL=Lbl(C6,label,S(11),K.White,Enum.Font.GothamBold)
+        NL.Size=UDim2.new(0.55,0,0,S(16))
+        NL.Position=UDim2.new(0,S(10),0,S(4))
+        local VL=Lbl(C6,tostring(getVal())..(suffix or ""),S(12),col,Enum.Font.Code,Enum.TextXAlignment.Right)
+        VL.Size=UDim2.new(0.4,0,0,S(16))
+        VL.Position=UDim2.new(0.58,0,0,S(4))
+        local TrBg=Frm(C6,K.BG2,UDim2.new(1,-S(20),0,S(5)),UDim2.new(0,S(10),0,S(34)))
+        Rnd(TrBg,3)
+        local pct=(getVal()-minV)/(maxV-minV)
+        local TrFl=Frm(TrBg,col,UDim2.new(pct,0,1,0)) Rnd(TrFl,3)
+        local Hnd=Frm(TrBg,K.White,UDim2.new(0,S(12),0,S(12)),UDim2.new(pct,0,0.5,-S(6)))
+        Hnd.ZIndex=3 Rnd(Hnd,S(6))
+        local drag=false
+        local function SetV(x)
+            local a=TrBg.AbsolutePosition.X
+            local ww=TrBg.AbsoluteSize.X
+            local p2=math.clamp((x-a)/ww,0,1)
+            local v2=math.floor(minV+p2*(maxV-minV))
+            setVal(v2)
+            VL.Text=tostring(v2)..(suffix or "")
+            Tw(TrFl,{Size=UDim2.new(p2,0,1,0)})
+            Tw(Hnd,{Position=UDim2.new(p2,0,0.5,-S(6))})
+        end
+        TrBg.InputBegan:Connect(function(i)
+            if i.UserInputType==Enum.UserInputType.MouseButton1
+            or i.UserInputType==Enum.UserInputType.Touch then
+                drag=true SetV(i.Position.X)
+            end
+        end)
+        UIS.InputChanged:Connect(function(i)
+            if drag and (i.UserInputType==Enum.UserInputType.MouseMovement
+            or i.UserInputType==Enum.UserInputType.Touch) then SetV(i.Position.X) end
+        end)
+        UIS.InputEnded:Connect(function(i)
+            if i.UserInputType==Enum.UserInputType.MouseButton1
+            or i.UserInputType==Enum.UserInputType.Touch then drag=false end
+        end)
+    end
+
+    SecHdr("Scan Settings",K.Acc)
+
+    SliderSetting("Max Results","Number of servers to show",5,50,
+        function() return maxResults end,
+        function(v) maxResults=v end," servers",K.Acc)
+
+    Toggle("Sort by Ping","Default sorts by player count",
+        function() return sortMode=="ping" end,
+        function(v) sortMode=v and "ping" or "players" end,K.Cyan)
+
+    SecHdr("Auto Scan",K.Yel)
+
+    Toggle("Auto-Scan","Automatically re-scan servers",
+        function() return autoScanOn end,
+        function(v)
+            autoScanOn=v
+            if v then
+                if autoScanConn then autoScanConn:Disconnect() end
+                autoScanConn=Run.Heartbeat:Connect(function()
+                    if not scanning then
+                        task.wait(autoScanDelay)
+                        if autoScanOn then ScanServers() end
+                    end
+                end)
+                Toast(">> auto-scan every "..autoScanDelay.."s",K.Yel,3)
+            else
+                if autoScanConn then autoScanConn:Disconnect() autoScanConn=nil end
+                Toast(">> auto-scan disabled",K.Sub,2)
+            end
+        end,K.Yel)
+
+    SliderSetting("Scan Interval","Seconds between auto-scans",10,120,
+        function() return autoScanDelay end,
+        function(v) autoScanDelay=v end,"s",K.Yel)
+
+    SecHdr("Info",K.Sub)
+
+    local InfoCard=Frm(sc,K.Panel,UDim2.new(1,-S(2),0,S(76)))
+    Rnd(InfoCard,S(4)) Stk(InfoCard,K.Line,1)
+    local infoLines={
+        "DeXFix v5.0  //  Server Explorer",
+        "Private server uses ReserveServer+TeleportAsync",
+        "♥ = save server to favourites",
+        "History tracks last 20 joined servers",
+    }
+    for ii,ln in ipairs(infoLines) do
+        local il=Lbl(InfoCard,ln,S(9),K.Sub,Enum.Font.Code)
+        il.Size=UDim2.new(1,-S(12),0,S(15))
+        il.Position=UDim2.new(0,S(8),0,(ii-1)*S(17)+S(4))
+    end
+end
+BuildSettingsPage()
+
+local minimized=false
+MinBtn.MouseButton1Click:Connect(function()
+    minimized=not minimized
+    Tw(Win,{Size=minimized and UDim2.new(0,W,0,HEAD_H+2) or UDim2.new(0,W,0,H)},0.28,Enum.EasingStyle.Back)
+    for _,p in pairs(tabPages) do p.Visible=not minimized and p==tabPages[activeTab] end
+    TabBar.Visible=not minimized
+    MinBtn.Text=minimized and "[+]" or "[−]"
+end)
+
+local dS,dWP
+HEAD.InputBegan:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1
+    or i.UserInputType==Enum.UserInputType.Touch then
+        dS=i.Position dWP=Win.Position
+    end
+end)
+UIS.InputChanged:Connect(function(i)
+    if dS and (i.UserInputType==Enum.UserInputType.MouseMovement
+    or i.UserInputType==Enum.UserInputType.Touch) then
+        local d=i.Position-dS
+        local nx=math.clamp(dWP.X.Offset+d.X,0,SW-W)
+        local ny=math.clamp(dWP.Y.Offset+d.Y,0,SH-HEAD_H)
+        Win.Position=UDim2.new(0,nx,0,ny)
+    end
+end)
+UIS.InputEnded:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1
+    or i.UserInputType==Enum.UserInputType.Touch then dS=nil end
+end)
+
+UIS.InputBegan:Connect(function(input,gpe)
+    if gpe then return end
+    if input.KeyCode==Enum.KeyCode.F5 then ScanServers() end
+    if input.KeyCode==Enum.KeyCode.F6 then SoloSession() end
+    if input.KeyCode==Enum.KeyCode.F7 then RandomHop()   end
+    if input.KeyCode==Enum.KeyCode.F8 then
+        minimized=not minimized
+        Tw(Win,{Size=minimized and UDim2.new(0,W,0,HEAD_H+2) or UDim2.new(0,W,0,H)},0.28,Enum.EasingStyle.Back)
+        for _,p in pairs(tabPages) do p.Visible=not minimized and p==tabPages[activeTab] end
+        TabBar.Visible=not minimized
+        MinBtn.Text=minimized and "[+]" or "[−]"
+    end
+end)
+
+local tAnim=0
+Run.RenderStepped:Connect(function(dt)
+    tAnim=tAnim+dt
+    local v=(math.sin(tAnim*1.5)+1)*0.5
+    PulseDot.BackgroundTransparency=0.1+0.7*v
+    ALG.Offset=Vector2.new(-0.4+v*0.45,0)
+    TG.Offset=Vector2.new(v*0.22-0.05,0)
+end)
+
+task.delay(0.25,function()
+    Toast("DeXFix v5.0  //  loaded  |  F5=scan F6=solo F7=hop",K.Acc,5)
+end)
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- -----------------
+-- -----------------
