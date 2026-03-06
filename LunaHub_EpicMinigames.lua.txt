@@ -1,0 +1,776 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local StarterGui = game:GetService("StarterGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local CoreGui = game:GetService("CoreGui")
+
+local LP = Players.LocalPlayer
+local Mouse = LP:GetMouse()
+local Cam = workspace.CurrentCamera
+
+local Char, HRP, Hum
+local function RefChar(c)
+    Char = c
+    HRP = c:WaitForChild("HumanoidRootPart")
+    Hum = c:WaitForChild("Humanoid")
+end
+RefChar(LP.Character or LP.CharacterAdded:Wait())
+LP.CharacterAdded:Connect(RefChar)
+
+local ST = {
+    CustomScore    = false,
+    AlwaysPlaying  = false,
+    CheatRound     = false,
+    AutoWin        = false,
+    InfJump        = false,
+    InfStamina     = false,
+    ClickTP        = false,
+    NoClip         = false,
+    ESP            = false,
+    AdminAlert     = true,
+    Fly            = false,
+    ServerHop      = false,
+    WalkSpeed      = 16,
+    JumpPower      = 50,
+    FlySpeed       = 60,
+    ScoreAmount    = 9999,
+}
+
+local ESPCache = {}
+local FlyBodies = {}
+local FlyCtrl = {F=0,B=0,L=0,R=0}
+local FlyConn
+local NoClipConn
+local AdminConn
+
+local function Safe(fn, ...)
+    return pcall(fn, ...)
+end
+
+local function Notify(title, msg, dur)
+    Safe(StarterGui.SetCore, StarterGui, "SendNotification", {Title=title, Text=msg, Duration=dur or 4})
+end
+
+local function FindRemote(name)
+    for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
+        if v.Name:lower():find(name:lower()) then return v end
+    end
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v.Name:lower():find(name:lower()) then return v end
+    end
+    return nil
+end
+
+local function Fire(name, ...)
+    local r = FindRemote(name)
+    if not r then return end
+    if r:IsA("RemoteEvent") then Safe(function() r:FireServer(...) end) end
+    if r:IsA("RemoteFunction") then Safe(function() r:InvokeServer(...) end) end
+end
+
+local function DoCustomScore(amt)
+    local names = {"SetScore","AddScore","GiveCoins","AddCoins","Points","AddPoints","SetPoints","SetMoney","AddMoney"}
+    for _, n in ipairs(names) do Fire(n, amt) end
+    local stats = LP:FindFirstChild("leaderstats") or LP:FindFirstChild("Stats")
+    if stats then
+        for _, v in ipairs(stats:GetChildren()) do
+            if v:IsA("IntValue") or v:IsA("NumberValue") then
+                Safe(function() v.Value = amt end)
+            end
+        end
+    end
+end
+
+local function DoAlwaysPlaying()
+    local evs = {"PlayerJoined","JoinGame","JoinRound","RejoinRound","ForceJoin","AddPlayer","StartPlaying"}
+    for _, n in ipairs(evs) do Fire(n, LP) end
+    for _, tag in ipairs({"Playing","InGame","InRound","IsPlaying"}) do
+        if LP and not LP:FindFirstChild(tag) then
+            local v = Instance.new("BoolValue")
+            v.Name = tag; v.Value = true; v.Parent = LP
+        end
+    end
+end
+
+local function DoCheatRound()
+    if not Char or not Hum then return end
+    Hum.MaxHealth = math.huge
+    Hum.Health = math.huge
+    Hum:SetAttribute("Invincible", true)
+    for _, tag in ipairs({"GodMode","Invincible","Protected","Immune","Safe","NoKill"}) do
+        if not Char:FindFirstChild(tag) then
+            local v = Instance.new("BoolValue")
+            v.Name = tag; v.Value = true; v.Parent = Char
+        end
+    end
+    Fire("GodMode")
+    Fire("Protect", LP)
+    Fire("SetInvincible", LP, true)
+end
+
+local function DoAutoWin()
+    for _, n in ipairs({"Win","RoundWin","PlayerWon","AwardWin","FinishRound","CompleteRound","EndRound","SetWinner"}) do
+        Fire(n, LP)
+    end
+    for _, tag in ipairs({"Winner","Win","Finish","Complete"}) do
+        if Char and not Char:FindFirstChild(tag) then
+            local v = Instance.new("BoolValue")
+            v.Name = tag; v.Value = true; v.Parent = Char
+        end
+    end
+end
+
+local function DoInfStamina()
+    for _, v in ipairs(LP:GetDescendants()) do
+        if (v.Name:lower():find("stam") or v.Name:lower():find("energy")) and
+           (v:IsA("NumberValue") or v:IsA("IntValue")) then
+            if v.Value < 50 then v.Value = 100 end
+        end
+    end
+end
+
+local function EnableNoClip()
+    NoClipConn = RunService.Stepped:Connect(function()
+        if not ST.NoClip or not Char then return end
+        for _, p in ipairs(Char:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = false end
+        end
+    end)
+end
+
+local function DisableNoClip()
+    if NoClipConn then NoClipConn:Disconnect(); NoClipConn = nil end
+    if Char then
+        for _, p in ipairs(Char:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = true end
+        end
+    end
+end
+
+local function StartFly()
+    if not HRP then return end
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+    bv.Velocity = Vector3.zero
+    bv.Parent = HRP
+    local bg = Instance.new("BodyGyro")
+    bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+    bg.CFrame = HRP.CFrame
+    bg.Parent = HRP
+    FlyBodies = {bv, bg}
+    FlyConn = RunService.Heartbeat:Connect(function()
+        if not ST.Fly then return end
+        local cf = Cam.CFrame
+        local dir = Vector3.zero
+        if FlyCtrl.F == 1 then dir += cf.LookVector end
+        if FlyCtrl.B == 1 then dir -= cf.LookVector end
+        if FlyCtrl.L == 1 then dir -= cf.RightVector end
+        if FlyCtrl.R == 1 then dir += cf.RightVector end
+        bv.Velocity = dir.Magnitude > 0 and dir.Unit * ST.FlySpeed or Vector3.zero
+        bg.CFrame = cf
+    end)
+end
+
+local function StopFly()
+    if FlyConn then FlyConn:Disconnect(); FlyConn = nil end
+    for _, b in ipairs(FlyBodies) do Safe(function() b:Destroy() end) end
+    FlyBodies = {}
+end
+
+local function CreateESP(player)
+    if player == LP then return end
+    Safe(function()
+        local bill = Instance.new("BillboardGui")
+        bill.AlwaysOnTop = true
+        bill.Size = UDim2.new(0, 130, 0, 32)
+        bill.StudsOffset = Vector3.new(0, 4, 0)
+        bill.Adornee = nil
+
+        local box = Instance.new("Frame", bill)
+        box.Size = UDim2.new(1, 0, 1, 0)
+        box.BackgroundColor3 = Color3.fromRGB(20, 10, 35)
+        box.BackgroundTransparency = 0.3
+        box.BorderSizePixel = 0
+        Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
+
+        local lbl = Instance.new("TextLabel", box)
+        lbl.Size = UDim2.new(1, 0, 1, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = player.Name
+        lbl.TextColor3 = Color3.fromRGB(200, 130, 255)
+        lbl.TextStrokeTransparency = 0
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextSize = 13
+
+        local function Attach(char)
+            local hrp = char:WaitForChild("HumanoidRootPart", 5)
+            if hrp then bill.Parent = hrp end
+        end
+
+        if player.Character then Attach(player.Character) end
+        player.CharacterAdded:Connect(Attach)
+        ESPCache[player.Name] = bill
+    end)
+end
+
+local function RemoveESP(player)
+    if ESPCache[player.Name] then
+        Safe(function() ESPCache[player.Name]:Destroy() end)
+        ESPCache[player.Name] = nil
+    end
+end
+
+local function EnableESP()
+    for _, p in ipairs(Players:GetPlayers()) do CreateESP(p) end
+    Players.PlayerAdded:Connect(CreateESP)
+    Players.PlayerRemoving:Connect(RemoveESP)
+end
+
+local function DisableESP()
+    for _, g in pairs(ESPCache) do Safe(function() g:Destroy() end) end
+    ESPCache = {}
+end
+
+local ADMIN_NAMES = {
+    "tcgnry","TwentyTwoPilots","Zomebody","Stickmasterluke","Roblox",
+    "builderman","Admin","Moderator","Staff","Owner","Developer",
+}
+local function IsAdmin(player)
+    local name = player.Name:lower()
+    for _, a in ipairs(ADMIN_NAMES) do
+        if name:find(a:lower()) then return true end
+    end
+    return player:GetRankInGroup(1200769) > 0
+end
+
+local function StartAdminAlert()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP then
+            Safe(function()
+                if IsAdmin(p) then
+                    Notify("⚠️ Luna Hub", "Admin detected: " .. p.Name, 8)
+                end
+            end)
+        end
+    end
+    AdminConn = Players.PlayerAdded:Connect(function(p)
+        if not ST.AdminAlert then return end
+        task.wait(1)
+        Safe(function()
+            if IsAdmin(p) then
+                Notify("⚠️ Luna Hub", "Admin joined: " .. p.Name, 8)
+            end
+        end)
+    end)
+end
+
+local function DoServerHop()
+    local placeId = game.PlaceId
+    local ok, data = Safe(function()
+        return HttpService:JSONDecode(
+            game:HttpGet("https://games.roblox.com/v1/games/"..placeId.."/servers/Public?sortOrder=Asc&limit=100")
+        )
+    end)
+    if not ok or not data then return end
+    for _, srv in ipairs(data.data or {}) do
+        if srv.id ~= game.JobId and srv.playing < srv.maxPlayers then
+            TeleportService:TeleportToPlaceInstance(placeId, srv.id, LP)
+            return
+        end
+    end
+    Notify("Luna Hub", "No available servers found.", 4)
+end
+
+local GUI = Instance.new("ScreenGui")
+GUI.Name = "LunaHub"
+GUI.ResetOnSpawn = false
+GUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+GUI.DisplayOrder = 999
+Safe(function()
+    if syn and syn.protect_gui then syn.protect_gui(GUI) end
+    GUI.Parent = CoreGui
+end)
+if not GUI.Parent then GUI.Parent = LP:WaitForChild("PlayerGui") end
+
+local BG_MAIN   = Color3.fromRGB(12, 8, 22)
+local BG_PANEL  = Color3.fromRGB(22, 14, 38)
+local BG_CARD   = Color3.fromRGB(30, 20, 50)
+local BG_INPUT  = Color3.fromRGB(35, 24, 56)
+local AC_PURPLE = Color3.fromRGB(170, 90, 255)
+local AC_PINK   = Color3.fromRGB(220, 100, 255)
+local TXT_WHITE = Color3.fromRGB(235, 225, 255)
+local TXT_SUB   = Color3.fromRGB(140, 110, 180)
+local COL_ON    = Color3.fromRGB(160, 80, 255)
+local COL_OFF   = Color3.fromRGB(45, 30, 70)
+local COL_ERR   = Color3.fromRGB(220, 60, 90)
+local COL_WARN  = Color3.fromRGB(220, 170, 40)
+local COL_OK    = Color3.fromRGB(80, 210, 120)
+
+local Main = Instance.new("Frame", GUI)
+Main.Name = "Main"
+Main.Size = UDim2.new(0, 430, 0, 580)
+Main.Position = UDim2.new(0.5, -215, 0.5, -290)
+Main.BackgroundColor3 = BG_MAIN
+Main.BorderSizePixel = 0
+Main.ClipsDescendants = true
+local MC = Instance.new("UICorner", Main); MC.CornerRadius = UDim.new(0, 14)
+
+local Glow = Instance.new("ImageLabel", Main)
+Glow.Size = UDim2.new(1, 60, 0, 180)
+Glow.Position = UDim2.new(0, -30, 0, -60)
+Glow.BackgroundTransparency = 1
+Glow.Image = "rbxassetid://5028857084"
+Glow.ImageColor3 = Color3.fromRGB(130, 50, 255)
+Glow.ImageTransparency = 0.82
+Glow.ScaleType = Enum.ScaleType.Slice
+Glow.SliceCenter = Rect.new(24, 24, 276, 276)
+Glow.ZIndex = 0
+
+local TopBar = Instance.new("Frame", Main)
+TopBar.Size = UDim2.new(1, 0, 0, 54)
+TopBar.BackgroundColor3 = BG_PANEL
+TopBar.BorderSizePixel = 0
+Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 14)
+local TopFix = Instance.new("Frame", TopBar)
+TopFix.Size = UDim2.new(1, 0, 0.5, 0)
+TopFix.Position = UDim2.new(0, 0, 0.5, 0)
+TopFix.BackgroundColor3 = BG_PANEL
+TopFix.BorderSizePixel = 0
+
+local LogoLbl = Instance.new("TextLabel", TopBar)
+LogoLbl.Size = UDim2.new(0, 38, 0, 38)
+LogoLbl.Position = UDim2.new(0, 10, 0.5, -19)
+LogoLbl.BackgroundTransparency = 1
+LogoLbl.Text = "🌙"
+LogoLbl.TextSize = 24
+LogoLbl.Font = Enum.Font.Gotham
+
+local TitleLbl = Instance.new("TextLabel", TopBar)
+TitleLbl.Size = UDim2.new(0, 180, 0, 26)
+TitleLbl.Position = UDim2.new(0, 52, 0, 8)
+TitleLbl.BackgroundTransparency = 1
+TitleLbl.Text = "Luna Hub"
+TitleLbl.TextColor3 = AC_PINK
+TitleLbl.Font = Enum.Font.GothamBold
+TitleLbl.TextSize = 18
+TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+local SubLbl = Instance.new("TextLabel", TopBar)
+SubLbl.Size = UDim2.new(0, 200, 0, 16)
+SubLbl.Position = UDim2.new(0, 52, 0, 34)
+SubLbl.BackgroundTransparency = 1
+SubLbl.Text = "Epic Minigames"
+SubLbl.TextColor3 = TXT_SUB
+SubLbl.Font = Enum.Font.Gotham
+SubLbl.TextSize = 11
+SubLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+local function MakeTopBtn(icon, xOff, col)
+    local b = Instance.new("TextButton", TopBar)
+    b.Size = UDim2.new(0, 28, 0, 28)
+    b.Position = UDim2.new(1, xOff, 0.5, -14)
+    b.BackgroundColor3 = col or BG_CARD
+    b.Text = icon
+    b.TextColor3 = TXT_WHITE
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 13
+    b.BorderSizePixel = 0
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    return b
+end
+local CloseBtn = MakeTopBtn("✕", -10, COL_ERR)
+local MinBtn   = MakeTopBtn("—", -44, BG_CARD)
+
+local TabBar = Instance.new("Frame", Main)
+TabBar.Size = UDim2.new(1, -16, 0, 34)
+TabBar.Position = UDim2.new(0, 8, 0, 60)
+TabBar.BackgroundColor3 = BG_PANEL
+TabBar.BorderSizePixel = 0
+Instance.new("UICorner", TabBar).CornerRadius = UDim.new(0, 8)
+local TabLayout = Instance.new("UIListLayout", TabBar)
+TabLayout.FillDirection = Enum.FillDirection.Horizontal
+TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local TABS = {"Main", "Misc", "Player", "Settings"}
+local TabBtns = {}
+local TabFrames = {}
+
+for i, name in ipairs(TABS) do
+    local b = Instance.new("TextButton", TabBar)
+    b.Size = UDim2.new(0.25, 0, 1, 0)
+    b.BackgroundTransparency = 1
+    b.Text = name
+    b.TextColor3 = i == 1 and AC_PURPLE or TXT_SUB
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 12
+    b.BorderSizePixel = 0
+    TabBtns[i] = b
+end
+
+local Content = Instance.new("Frame", Main)
+Content.Size = UDim2.new(1, -16, 1, -104)
+Content.Position = UDim2.new(0, 8, 0, 100)
+Content.BackgroundTransparency = 1
+
+for i = 1, #TABS do
+    local f = Instance.new("ScrollingFrame", Content)
+    f.Size = UDim2.new(1, 0, 1, 0)
+    f.BackgroundTransparency = 1
+    f.BorderSizePixel = 0
+    f.ScrollBarThickness = 3
+    f.ScrollBarImageColor3 = AC_PURPLE
+    f.CanvasSize = UDim2.new(0, 0, 0, 0)
+    f.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    f.Visible = i == 1
+    local l = Instance.new("UIListLayout", f)
+    l.Padding = UDim.new(0, 6)
+    l.SortOrder = Enum.SortOrder.LayoutOrder
+    local p = Instance.new("UIPadding", f)
+    p.PaddingTop = UDim.new(0, 4)
+    p.PaddingBottom = UDim.new(0, 4)
+    TabFrames[i] = f
+end
+
+local function SwitchTab(idx)
+    for i, f in ipairs(TabFrames) do
+        f.Visible = i == idx
+        TabBtns[i].TextColor3 = i == idx and AC_PURPLE or TXT_SUB
+    end
+end
+for i, b in ipairs(TabBtns) do b.MouseButton1Click:Connect(function() SwitchTab(i) end) end
+
+local function MakeSec(parent, txt, order)
+    local f = Instance.new("Frame", parent)
+    f.Size = UDim2.new(1, -4, 0, 26)
+    f.BackgroundColor3 = BG_PANEL
+    f.BorderSizePixel = 0
+    f.LayoutOrder = order or 0
+    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 6)
+    local l = Instance.new("TextLabel", f)
+    l.Size = UDim2.new(1, -12, 1, 0)
+    l.Position = UDim2.new(0, 10, 0, 0)
+    l.BackgroundTransparency = 1
+    l.Text = txt
+    l.TextColor3 = AC_PURPLE
+    l.Font = Enum.Font.GothamBold
+    l.TextSize = 11
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    return f
+end
+
+local function MakeToggle(parent, txt, key, order, cb)
+    local f = Instance.new("Frame", parent)
+    f.Size = UDim2.new(1, -4, 0, 42)
+    f.BackgroundColor3 = BG_CARD
+    f.BorderSizePixel = 0
+    f.LayoutOrder = order or 0
+    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
+
+    local lbl = Instance.new("TextLabel", f)
+    lbl.Size = UDim2.new(1, -70, 1, 0)
+    lbl.Position = UDim2.new(0, 12, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = txt
+    lbl.TextColor3 = TXT_WHITE
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 13
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local btn = Instance.new("TextButton", f)
+    btn.Size = UDim2.new(0, 54, 0, 26)
+    btn.Position = UDim2.new(1, -62, 0.5, -13)
+    btn.BackgroundColor3 = ST[key] and COL_ON or COL_OFF
+    btn.Text = ST[key] and "ON" or "OFF"
+    btn.TextColor3 = TXT_WHITE
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 12
+    btn.BorderSizePixel = 0
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+
+    btn.MouseButton1Click:Connect(function()
+        ST[key] = not ST[key]
+        btn.Text = ST[key] and "ON" or "OFF"
+        btn.BackgroundColor3 = ST[key] and COL_ON or COL_OFF
+        if cb then cb(ST[key]) end
+    end)
+    return f
+end
+
+local function MakeButton(parent, txt, order, col, cb)
+    local btn = Instance.new("TextButton", parent)
+    btn.Size = UDim2.new(1, -4, 0, 38)
+    btn.BackgroundColor3 = col or AC_PURPLE
+    btn.Text = txt
+    btn.TextColor3 = TXT_WHITE
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 13
+    btn.BorderSizePixel = 0
+    btn.LayoutOrder = order or 0
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+    btn.MouseButton1Click:Connect(cb or function() end)
+    return btn
+end
+
+local function MakeSlider(parent, txt, key, min, max, order, cb)
+    local f = Instance.new("Frame", parent)
+    f.Size = UDim2.new(1, -4, 0, 58)
+    f.BackgroundColor3 = BG_CARD
+    f.BorderSizePixel = 0
+    f.LayoutOrder = order or 0
+    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
+
+    local lbl = Instance.new("TextLabel", f)
+    lbl.Size = UDim2.new(1, -10, 0, 22)
+    lbl.Position = UDim2.new(0, 10, 0, 4)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = txt .. ": " .. ST[key]
+    lbl.TextColor3 = TXT_WHITE
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 12
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local track = Instance.new("Frame", f)
+    track.Size = UDim2.new(1, -20, 0, 6)
+    track.Position = UDim2.new(0, 10, 0, 38)
+    track.BackgroundColor3 = BG_PANEL
+    track.BorderSizePixel = 0
+    Instance.new("UICorner", track).CornerRadius = UDim.new(0, 3)
+
+    local pct = math.clamp((ST[key] - min) / (max - min), 0, 1)
+    local fill = Instance.new("Frame", track)
+    fill.Size = UDim2.new(pct, 0, 1, 0)
+    fill.BackgroundColor3 = AC_PURPLE
+    fill.BorderSizePixel = 0
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 3)
+
+    local knob = Instance.new("Frame", track)
+    knob.Size = UDim2.new(0, 12, 0, 12)
+    knob.Position = UDim2.new(pct, -6, 0.5, -6)
+    knob.BackgroundColor3 = AC_PINK
+    knob.BorderSizePixel = 0
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+    local dragging = false
+    track.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 or
+           inp.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 or
+           inp.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if not dragging then return end
+        if inp.UserInputType ~= Enum.UserInputType.MouseMovement and
+           inp.UserInputType ~= Enum.UserInputType.Touch then return end
+        local rel = math.clamp((inp.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+        local val = math.floor(min + (max - min) * rel)
+        ST[key] = val
+        fill.Size = UDim2.new(rel, 0, 1, 0)
+        knob.Position = UDim2.new(rel, -6, 0.5, -6)
+        lbl.Text = txt .. ": " .. val
+        if cb then cb(val) end
+    end)
+    return f
+end
+
+local function MakeInputRow(parent, txt, order, cb)
+    local f = Instance.new("Frame", parent)
+    f.Size = UDim2.new(1, -4, 0, 58)
+    f.BackgroundColor3 = BG_CARD
+    f.BorderSizePixel = 0
+    f.LayoutOrder = order or 0
+    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
+
+    local lbl = Instance.new("TextLabel", f)
+    lbl.Size = UDim2.new(1, -10, 0, 20)
+    lbl.Position = UDim2.new(0, 10, 0, 4)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = txt
+    lbl.TextColor3 = TXT_SUB
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 11
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local box = Instance.new("TextBox", f)
+    box.Size = UDim2.new(1, -90, 0, 28)
+    box.Position = UDim2.new(0, 8, 0, 24)
+    box.BackgroundColor3 = BG_INPUT
+    box.Text = tostring(ST.ScoreAmount)
+    box.TextColor3 = TXT_WHITE
+    box.Font = Enum.Font.Gotham
+    box.TextSize = 13
+    box.BorderSizePixel = 0
+    box.ClearTextOnFocus = false
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
+    local bp = Instance.new("UIPadding", box)
+    bp.PaddingLeft = UDim.new(0, 8)
+
+    local setBtn = Instance.new("TextButton", f)
+    setBtn.Size = UDim2.new(0, 72, 0, 28)
+    setBtn.Position = UDim2.new(1, -80, 0, 24)
+    setBtn.BackgroundColor3 = AC_PURPLE
+    setBtn.Text = "Set"
+    setBtn.TextColor3 = TXT_WHITE
+    setBtn.Font = Enum.Font.GothamBold
+    setBtn.TextSize = 12
+    setBtn.BorderSizePixel = 0
+    Instance.new("UICorner", setBtn).CornerRadius = UDim.new(0, 6)
+    setBtn.MouseButton1Click:Connect(function()
+        local v = tonumber(box.Text)
+        if v then
+            ST.ScoreAmount = v
+            if cb then cb(v) end
+        end
+    end)
+    return f
+end
+
+MakeSec(TabFrames[1], "🎮  AUTO / CHEAT", 1)
+
+MakeToggle(TabFrames[1], "Custom Score", "CustomScore", 2, function(on)
+    if on then DoCustomScore(ST.ScoreAmount) end
+end)
+MakeInputRow(TabFrames[1], "Score Amount", 3, function(v)
+    if ST.CustomScore then DoCustomScore(v) end
+end)
+MakeToggle(TabFrames[1], "Always Playing", "AlwaysPlaying", 4, nil)
+MakeToggle(TabFrames[1], "Cheat Round (God Mode)", "CheatRound", 5, function(on)
+    if on then DoCheatRound() end
+end)
+MakeToggle(TabFrames[1], "Auto Win", "AutoWin", 6, nil)
+MakeSec(TabFrames[1], "🛡️  ADMIN / SERVER", 7)
+MakeToggle(TabFrames[1], "Admin Alert", "AdminAlert", 8, nil)
+MakeButton(TabFrames[1], "🌐  Server Hop", 9, BG_CARD, function()
+    Notify("Luna Hub", "Hopping server...", 3)
+    task.spawn(DoServerHop)
+end)
+
+MakeSec(TabFrames[2], "⚙️  MOVEMENT", 1)
+MakeToggle(TabFrames[2], "Infinite Jump", "InfJump", 2, nil)
+MakeToggle(TabFrames[2], "Infinite Stamina", "InfStamina", 3, nil)
+MakeToggle(TabFrames[2], "Click Teleport (Mouse)", "ClickTP", 4, nil)
+MakeToggle(TabFrames[2], "NoClip", "NoClip", 5, function(on)
+    if on then EnableNoClip() else DisableNoClip() end
+end)
+MakeToggle(TabFrames[2], "Fly [F Key]", "Fly", 6, function(on)
+    if on then StartFly() else StopFly() end
+end)
+MakeSec(TabFrames[2], "👁️  VISUALS", 7)
+MakeToggle(TabFrames[2], "Player ESP", "ESP", 8, function(on)
+    if on then EnableESP() else DisableESP() end
+end)
+
+MakeSec(TabFrames[3], "🏃  SPEED / JUMP", 1)
+MakeSlider(TabFrames[3], "WalkSpeed", "WalkSpeed", 16, 300, 2, function(v)
+    if Hum then Hum.WalkSpeed = v end
+end)
+MakeSlider(TabFrames[3], "JumpPower", "JumpPower", 50, 400, 3, function(v)
+    if Hum then Hum.JumpPower = v end
+end)
+MakeSlider(TabFrames[3], "Fly Speed", "FlySpeed", 20, 300, 4, nil)
+
+MakeSec(TabFrames[4], "🔑  KEYBINDS", 1)
+local bindInfo = Instance.new("TextLabel", TabFrames[4])
+bindInfo.Size = UDim2.new(1, -4, 0, 90)
+bindInfo.BackgroundColor3 = BG_CARD
+bindInfo.TextColor3 = TXT_WHITE
+bindInfo.Font = Enum.Font.Gotham
+bindInfo.TextSize = 12
+bindInfo.Text = "Insert — Toggle GUI\nF — Toggle Fly\nE — Click Teleport\nDelete — Server Hop"
+bindInfo.BackgroundTransparency = 0
+bindInfo.BorderSizePixel = 0
+bindInfo.LayoutOrder = 2
+Instance.new("UICorner", bindInfo).CornerRadius = UDim.new(0, 8)
+
+MakeSec(TabFrames[4], "ℹ️  INFO", 3)
+local verLbl = Instance.new("TextLabel", TabFrames[4])
+verLbl.Size = UDim2.new(1, -4, 0, 54)
+verLbl.BackgroundColor3 = BG_CARD
+verLbl.TextColor3 = TXT_SUB
+verLbl.Font = Enum.Font.Gotham
+verLbl.TextSize = 11
+verLbl.Text = "Luna Hub v1.0\nEpic Minigames\nGame: " .. game.PlaceId .. "\nPlayers: " .. #Players:GetPlayers()
+verLbl.BackgroundTransparency = 0
+verLbl.BorderSizePixel = 0
+verLbl.LayoutOrder = 4
+Instance.new("UICorner", verLbl).CornerRadius = UDim.new(0, 8)
+
+local Dragging, DragStart, StartPos
+TopBar.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+        Dragging = true; DragStart = inp.Position; StartPos = Main.Position
+    end
+end)
+TopBar.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 then Dragging = false end
+end)
+UserInputService.InputChanged:Connect(function(inp)
+    if Dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
+        local d = inp.Position - DragStart
+        Main.Position = UDim2.new(StartPos.X.Scale, StartPos.X.Offset + d.X, StartPos.Y.Scale, StartPos.Y.Offset + d.Y)
+    end
+end)
+
+CloseBtn.MouseButton1Click:Connect(function() GUI:Destroy() end)
+local Minimized = false
+MinBtn.MouseButton1Click:Connect(function()
+    Minimized = not Minimized
+    Content.Visible = not Minimized
+    TabBar.Visible = not Minimized
+    Main.Size = Minimized and UDim2.new(0, 430, 0, 54) or UDim2.new(0, 430, 0, 580)
+    MinBtn.Text = Minimized and "+" or "—"
+end)
+
+UserInputService.InputBegan:Connect(function(inp, g)
+    if g then return end
+    if inp.KeyCode == Enum.KeyCode.Insert then GUI.Enabled = not GUI.Enabled end
+    if inp.KeyCode == Enum.KeyCode.F then
+        ST.Fly = not ST.Fly
+        if ST.Fly then StartFly() else StopFly() end
+    end
+    if inp.KeyCode == Enum.KeyCode.E and ST.ClickTP and HRP then
+        local pos = Mouse.Hit.Position
+        if pos then HRP.CFrame = CFrame.new(pos + Vector3.new(0, 4, 0)) end
+    end
+    if inp.KeyCode == Enum.KeyCode.Delete then task.spawn(DoServerHop) end
+    if inp.KeyCode == Enum.KeyCode.W then FlyCtrl.F = 1 end
+    if inp.KeyCode == Enum.KeyCode.S then FlyCtrl.B = 1 end
+    if inp.KeyCode == Enum.KeyCode.A then FlyCtrl.L = 1 end
+    if inp.KeyCode == Enum.KeyCode.D then FlyCtrl.R = 1 end
+end)
+UserInputService.InputEnded:Connect(function(inp)
+    if inp.KeyCode == Enum.KeyCode.W then FlyCtrl.F = 0 end
+    if inp.KeyCode == Enum.KeyCode.S then FlyCtrl.B = 0 end
+    if inp.KeyCode == Enum.KeyCode.A then FlyCtrl.L = 0 end
+    if inp.KeyCode == Enum.KeyCode.D then FlyCtrl.R = 0 end
+end)
+
+UserInputService.JumpRequest:Connect(function()
+    if ST.InfJump and Hum then Hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+end)
+
+local Tick = {Score=0, Playing=0, Win=0, Stam=0, Cheat=0}
+RunService.Heartbeat:Connect(function()
+    local t = tick()
+    if Hum then
+        if ST.WalkSpeed ~= 16 then Hum.WalkSpeed = ST.WalkSpeed end
+        if ST.JumpPower ~= 50 then Hum.JumpPower = ST.JumpPower end
+    end
+    if ST.CustomScore and t - Tick.Score > 1 then Tick.Score = t; Safe(DoCustomScore, ST.ScoreAmount) end
+    if ST.AlwaysPlaying and t - Tick.Playing > 2 then Tick.Playing = t; Safe(DoAlwaysPlaying) end
+    if ST.AutoWin and t - Tick.Win > 3 then Tick.Win = t; Safe(DoAutoWin) end
+    if ST.InfStamina and t - Tick.Stam > 0.5 then Tick.Stam = t; Safe(DoInfStamina) end
+    if ST.CheatRound and t - Tick.Cheat > 2 then Tick.Cheat = t; Safe(DoCheatRound) end
+end)
+
+StartAdminAlert()
+Notify("🌙 Luna Hub", "Loaded for Epic Minigames!", 5)
