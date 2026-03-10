@@ -1,0 +1,577 @@
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local Lighting         = game:GetService("Lighting")
+local Workspace        = game:GetService("Workspace")
+local VirtualUser      = game:GetService("VirtualUser")
+local Camera           = Workspace.CurrentCamera
+local LocalPlayer      = Players.LocalPlayer
+local Mouse            = LocalPlayer:GetMouse()
+
+local CFG = {
+    ESPEnabled        = false, ESPBoxes = true, ESPBoxStyle = "Corner",
+    ESPBoxColor       = Color3.fromRGB(80,200,255), ESPBoxThickness = 1.5,
+    ESPBoxFilled      = false, ESPBoxFillTrans = 0.85,
+    ESPNames          = true, ESPNameSize = 13,
+    ESPNameColor      = Color3.fromRGB(255,255,255), ESPNameOutline = true,
+    ESPHealth         = true, ESPHealthGradient = true, ESPHealthBarPos = "Left",
+    ESPDistance       = true, ESPDistanceColor = Color3.fromRGB(180,180,255), ESPDistanceSize = 11,
+    ESPMaxDistance    = 1000, ESPSkeleton = false,
+    ESPSkeletonColor  = Color3.fromRGB(255,200,60), ESPSkeletonThick = 1.2,
+    ESPChams          = false, ESPChamsColor = Color3.fromRGB(80,200,255), ESPChamsTrans = 0.65,
+    ESPTeamCheck      = true, ESPTeamColor = Color3.fromRGB(60,230,100), ESPShowTeammates = false,
+    ESPTracers        = false, ESPTracerOrigin = "Bottom",
+    ESPTracerColor    = Color3.fromRGB(80,200,255), ESPTracerThick = 1,
+    ESPHeadDot        = false, ESPHeadDotColor = Color3.fromRGB(255,60,60), ESPHeadDotSize = 4,
+
+    AimbotEnabled     = false, AimbotFOV = 130, AimbotSmooth = 0.20,
+    AimbotPart        = "Head", AimbotPrediction = true, AimbotPredStrength = 0.14,
+    AimbotVisible     = false, AimbotTeamCheck = true,
+    AimbotKey         = Enum.UserInputType.MouseButton2,
+    ShowFOVCircle     = true, FOVCircleColor = Color3.fromRGB(255,255,255),
+    FOVCircleThick    = 1.5, FOVCircleFilled = false,
+    AimbotLockOn      = false, AimbotAutoFire = false, AimbotHitChance = 100,
+    AimbotStickyAim   = false, AimbotStickyRange = 45,
+    AimbotHighlight   = true, AimbotPriority = "Nearest",
+
+    SilentAim         = false, SilentAimPart = "Head", SilentAimFOV = 180,
+    SilentAimCheck    = false, SilentAimChance = 100, SilentAimTeamCheck = true,
+
+    NoRecoil          = false, NoRecoilStrength = 1.0, NoSpread = false,
+
+    KillAura          = false, KillAuraRange = 22, KillAuraTeamCheck = true,
+    KillAuraCooldown  = 0.08, KillAuraAutoBlock = false, KillAuraPriority = "Nearest",
+    AutoParry         = false, AutoParryCooldown = 0.15,
+
+    SpeedEnabled      = false, SpeedValue = 32, SpeedMode = "WalkSpeed",
+    BunnyHop          = false,
+    InfJump           = false, JumpPower = 55,
+    MultiJump         = false, MultiJumpCount = 2,
+    Noclip            = false, Fly = false, FlySpeed = 60,
+    AntiKnockback     = false,
+
+    FullBright        = false, FullBrightVal = 10,
+    NoFog             = false, NightMode = false,
+    RainbowChams      = false, RainbowSpeed = 1.0,
+
+    Crosshair         = false, CrosshairColor = Color3.fromRGB(255,255,255),
+    CrosshairSize     = 10, CrosshairThick = 1.5, CrosshairGap = 4, CrosshairDot = true,
+
+    AntiAFK           = true,
+}
+
+local function getChar(p) return p and p.Character end
+local function getRoot(p) local c=getChar(p) return c and c:FindFirstChild("HumanoidRootPart") end
+local function getHum(p)  local c=getChar(p) return c and c:FindFirstChildOfClass("Humanoid") end
+local function alive(p)   local h=getHum(p) return h and h.Health>0 end
+local function teammate(p) return p.Team==LocalPlayer.Team end
+local function getDist(p)
+    local r=getRoot(p) local m=getRoot(LocalPlayer)
+    if r and m then return (r.Position-m.Position).Magnitude end
+    return math.huge
+end
+
+local Window = Rayfield:CreateWindow({
+    Name = "Anti God  |  BloxStrike",
+    LoadingTitle = "Anti God",
+    LoadingSubtitle = "BloxStrike Hub",
+    ConfigurationSaving = {Enabled = false},
+    Discord = {Enabled = false},
+    KeySystem = false,
+})
+
+local TabESP      = Window:CreateTab("ESP",      "eye")
+local TabAimbot   = Window:CreateTab("Aimbot",   "crosshair")
+local TabSilent   = Window:CreateTab("Silent",   "volume-x")
+local TabCombat   = Window:CreateTab("Combat",   "sword")
+local TabMove     = Window:CreateTab("Movement", "run")
+local TabVisual   = Window:CreateTab("Visuals",  "sparkles")
+local TabCross    = Window:CreateTab("Crosshair","plus")
+local TabConfig   = Window:CreateTab("Config",   "settings")
+
+TabESP:CreateSection("General")
+TabESP:CreateToggle({Name="ESP Master",CurrentValue=false,Flag="ESP1",Callback=function(v) CFG.ESPEnabled=v end})
+TabESP:CreateToggle({Name="Team Check",CurrentValue=true,Flag="ESP2",Callback=function(v) CFG.ESPTeamCheck=v end})
+TabESP:CreateToggle({Name="Show Teammates",CurrentValue=false,Flag="ESP3",Callback=function(v) CFG.ESPShowTeammates=v end})
+TabESP:CreateSlider({Name="Max Distance",Range={50,3000},Increment=50,Suffix="st",CurrentValue=1000,Flag="ESP4",Callback=function(v) CFG.ESPMaxDistance=v end})
+
+TabESP:CreateSection("Boxes")
+TabESP:CreateToggle({Name="Show Boxes",CurrentValue=true,Flag="ESP5",Callback=function(v) CFG.ESPBoxes=v end})
+TabESP:CreateDropdown({Name="Box Style",Options={"2D","Corner","Filled"},CurrentOption={"Corner"},Flag="ESP6",Callback=function(v) CFG.ESPBoxStyle=v end})
+TabESP:CreateToggle({Name="Filled Box",CurrentValue=false,Flag="ESP7",Callback=function(v) CFG.ESPBoxFilled=v end})
+TabESP:CreateSlider({Name="Box Thickness",Range={1,5},Increment=1,CurrentValue=2,Flag="ESP8",Callback=function(v) CFG.ESPBoxThickness=v end})
+TabESP:CreateColorPicker({Name="Enemy Box Color",Color=Color3.fromRGB(80,200,255),Flag="ESP9",Callback=function(v) CFG.ESPBoxColor=v end})
+TabESP:CreateColorPicker({Name="Team Box Color",Color=Color3.fromRGB(60,230,100),Flag="ESP10",Callback=function(v) CFG.ESPTeamColor=v end})
+
+TabESP:CreateSection("Info Labels")
+TabESP:CreateToggle({Name="Player Names",CurrentValue=true,Flag="ESP11",Callback=function(v) CFG.ESPNames=v end})
+TabESP:CreateSlider({Name="Name Font Size",Range={8,22},Increment=1,CurrentValue=13,Flag="ESP12",Callback=function(v) CFG.ESPNameSize=v end})
+TabESP:CreateColorPicker({Name="Name Color",Color=Color3.fromRGB(255,255,255),Flag="ESP13",Callback=function(v) CFG.ESPNameColor=v end})
+TabESP:CreateToggle({Name="Health Bar",CurrentValue=true,Flag="ESP14",Callback=function(v) CFG.ESPHealth=v end})
+TabESP:CreateToggle({Name="HP Gradient",CurrentValue=true,Flag="ESP15",Callback=function(v) CFG.ESPHealthGradient=v end})
+TabESP:CreateDropdown({Name="HP Bar Position",Options={"Left","Right","Top","Bottom"},CurrentOption={"Left"},Flag="ESP16",Callback=function(v) CFG.ESPHealthBarPos=v end})
+TabESP:CreateToggle({Name="Distance",CurrentValue=true,Flag="ESP17",Callback=function(v) CFG.ESPDistance=v end})
+TabESP:CreateSlider({Name="Distance Font Size",Range={8,18},Increment=1,CurrentValue=11,Flag="ESP18",Callback=function(v) CFG.ESPDistanceSize=v end})
+TabESP:CreateColorPicker({Name="Distance Color",Color=Color3.fromRGB(180,180,255),Flag="ESP19",Callback=function(v) CFG.ESPDistanceColor=v end})
+
+TabESP:CreateSection("Skeleton & Extras")
+TabESP:CreateToggle({Name="Skeleton ESP",CurrentValue=false,Flag="ESP20",Callback=function(v) CFG.ESPSkeleton=v end})
+TabESP:CreateSlider({Name="Skeleton Thickness",Range={1,4},Increment=1,CurrentValue=1,Flag="ESP21",Callback=function(v) CFG.ESPSkeletonThick=v end})
+TabESP:CreateColorPicker({Name="Skeleton Color",Color=Color3.fromRGB(255,200,60),Flag="ESP22",Callback=function(v) CFG.ESPSkeletonColor=v end})
+TabESP:CreateToggle({Name="Chams",CurrentValue=false,Flag="ESP23",Callback=function(v) CFG.ESPChams=v end})
+TabESP:CreateSlider({Name="Chams Transparency",Range={10,95},Increment=5,CurrentValue=65,Flag="ESP24",Callback=function(v) CFG.ESPChamsTrans=v/100 end})
+TabESP:CreateColorPicker({Name="Chams Color",Color=Color3.fromRGB(80,200,255),Flag="ESP25",Callback=function(v) CFG.ESPChamsColor=v end})
+TabESP:CreateToggle({Name="Head Dot",CurrentValue=false,Flag="ESP26",Callback=function(v) CFG.ESPHeadDot=v end})
+TabESP:CreateSlider({Name="Head Dot Size",Range={2,12},Increment=1,CurrentValue=4,Flag="ESP27",Callback=function(v) CFG.ESPHeadDotSize=v end})
+TabESP:CreateColorPicker({Name="Head Dot Color",Color=Color3.fromRGB(255,60,60),Flag="ESP28",Callback=function(v) CFG.ESPHeadDotColor=v end})
+TabESP:CreateToggle({Name="Tracers",CurrentValue=false,Flag="ESP29",Callback=function(v) CFG.ESPTracers=v end})
+TabESP:CreateDropdown({Name="Tracer Origin",Options={"Bottom","Top","Center"},CurrentOption={"Bottom"},Flag="ESP30",Callback=function(v) CFG.ESPTracerOrigin=v end})
+TabESP:CreateSlider({Name="Tracer Thickness",Range={1,4},Increment=1,CurrentValue=1,Flag="ESP31",Callback=function(v) CFG.ESPTracerThick=v end})
+TabESP:CreateColorPicker({Name="Tracer Color",Color=Color3.fromRGB(80,200,255),Flag="ESP32",Callback=function(v) CFG.ESPTracerColor=v end})
+
+TabAimbot:CreateSection("Aimbot")
+TabAimbot:CreateToggle({Name="Aimbot",CurrentValue=false,Flag="AIM1",Callback=function(v) CFG.AimbotEnabled=v end})
+TabAimbot:CreateToggle({Name="Visible Check",CurrentValue=false,Flag="AIM2",Callback=function(v) CFG.AimbotVisible=v end})
+TabAimbot:CreateToggle({Name="Team Check",CurrentValue=true,Flag="AIM3",Callback=function(v) CFG.AimbotTeamCheck=v end})
+TabAimbot:CreateToggle({Name="Lock On",CurrentValue=false,Flag="AIM4",Callback=function(v) CFG.AimbotLockOn=v end})
+TabAimbot:CreateToggle({Name="Auto Fire",CurrentValue=false,Flag="AIM5",Callback=function(v) CFG.AimbotAutoFire=v end})
+TabAimbot:CreateDropdown({Name="Target Priority",Options={"Nearest","Lowest HP","Highest HP","Random"},CurrentOption={"Nearest"},Flag="AIM6",Callback=function(v) CFG.AimbotPriority=v end})
+TabAimbot:CreateDropdown({Name="Target Part",Options={"Head","HumanoidRootPart","UpperTorso","LeftArm","RightArm"},CurrentOption={"Head"},Flag="AIM7",Callback=function(v) CFG.AimbotPart=v end})
+
+TabAimbot:CreateSection("FOV & Smoothing")
+TabAimbot:CreateSlider({Name="FOV Radius",Range={5,600},Increment=5,Suffix="px",CurrentValue=130,Flag="AIM8",Callback=function(v) CFG.AimbotFOV=v end})
+TabAimbot:CreateSlider({Name="Smoothness",Range={1,100},Increment=1,CurrentValue=20,Flag="AIM9",Callback=function(v) CFG.AimbotSmooth=v/100 end})
+TabAimbot:CreateSlider({Name="Hit Chance",Range={5,100},Increment=5,Suffix="%",CurrentValue=100,Flag="AIM10",Callback=function(v) CFG.AimbotHitChance=v end})
+TabAimbot:CreateToggle({Name="Show FOV Circle",CurrentValue=true,Flag="AIM11",Callback=function(v) CFG.ShowFOVCircle=v end})
+TabAimbot:CreateToggle({Name="Filled FOV",CurrentValue=false,Flag="AIM12",Callback=function(v) CFG.FOVCircleFilled=v end})
+TabAimbot:CreateSlider({Name="FOV Circle Thickness",Range={1,4},Increment=1,CurrentValue=2,Flag="AIM13",Callback=function(v) CFG.FOVCircleThick=v end})
+TabAimbot:CreateColorPicker({Name="FOV Circle Color",Color=Color3.fromRGB(255,255,255),Flag="AIM14",Callback=function(v) CFG.FOVCircleColor=v end})
+TabAimbot:CreateToggle({Name="Highlight Target",CurrentValue=true,Flag="AIM15",Callback=function(v) CFG.AimbotHighlight=v end})
+
+TabAimbot:CreateSection("Prediction & Sticky")
+TabAimbot:CreateToggle({Name="Aim Prediction",CurrentValue=true,Flag="AIM16",Callback=function(v) CFG.AimbotPrediction=v end})
+TabAimbot:CreateSlider({Name="Prediction Strength",Range={1,80},Increment=1,CurrentValue=14,Flag="AIM17",Callback=function(v) CFG.AimbotPredStrength=v/100 end})
+TabAimbot:CreateToggle({Name="Sticky Aim",CurrentValue=false,Flag="AIM18",Callback=function(v) CFG.AimbotStickyAim=v end})
+TabAimbot:CreateSlider({Name="Sticky Range",Range={5,150},Increment=5,Suffix="px",CurrentValue=45,Flag="AIM19",Callback=function(v) CFG.AimbotStickyRange=v end})
+
+TabAimbot:CreateSection("Recoil")
+TabAimbot:CreateToggle({Name="No Recoil",CurrentValue=false,Flag="AIM20",Callback=function(v) CFG.NoRecoil=v end})
+TabAimbot:CreateSlider({Name="Recoil Strength",Range={10,100},Increment=5,Suffix="%",CurrentValue=100,Flag="AIM21",Callback=function(v) CFG.NoRecoilStrength=v/100 end})
+TabAimbot:CreateToggle({Name="No Spread",CurrentValue=false,Flag="AIM22",Callback=function(v) CFG.NoSpread=v end})
+
+TabSilent:CreateSection("Silent Aim")
+TabSilent:CreateToggle({Name="Silent Aim",CurrentValue=false,Flag="SA1",Callback=function(v) CFG.SilentAim=v end})
+TabSilent:CreateToggle({Name="Team Check",CurrentValue=true,Flag="SA2",Callback=function(v) CFG.SilentAimTeamCheck=v end})
+TabSilent:CreateToggle({Name="Visible Check",CurrentValue=false,Flag="SA3",Callback=function(v) CFG.SilentAimCheck=v end})
+TabSilent:CreateDropdown({Name="Target Part",Options={"Head","HumanoidRootPart","UpperTorso","Neck"},CurrentOption={"Head"},Flag="SA4",Callback=function(v) CFG.SilentAimPart=v end})
+TabSilent:CreateSlider({Name="Silent Aim FOV",Range={5,360},Increment=5,Suffix="°",CurrentValue=180,Flag="SA5",Callback=function(v) CFG.SilentAimFOV=v end})
+TabSilent:CreateSlider({Name="Hit Chance",Range={5,100},Increment=5,Suffix="%",CurrentValue=100,Flag="SA6",Callback=function(v) CFG.SilentAimChance=v end})
+
+TabCombat:CreateSection("Kill Aura")
+TabCombat:CreateToggle({Name="Kill Aura",CurrentValue=false,Flag="CB1",Callback=function(v) CFG.KillAura=v end})
+TabCombat:CreateToggle({Name="Team Check",CurrentValue=true,Flag="CB2",Callback=function(v) CFG.KillAuraTeamCheck=v end})
+TabCombat:CreateToggle({Name="Auto Block",CurrentValue=false,Flag="CB3",Callback=function(v) CFG.KillAuraAutoBlock=v end})
+TabCombat:CreateSlider({Name="Kill Aura Range",Range={5,120},Increment=5,Suffix="st",CurrentValue=22,Flag="CB4",Callback=function(v) CFG.KillAuraRange=v end})
+TabCombat:CreateSlider({Name="Attack Cooldown",Range={2,300},Increment=2,Suffix="ms",CurrentValue=80,Flag="CB5",Callback=function(v) CFG.KillAuraCooldown=v/1000 end})
+TabCombat:CreateDropdown({Name="Target Priority",Options={"Nearest","Lowest HP","Highest HP","Random"},CurrentOption={"Nearest"},Flag="CB6",Callback=function(v) CFG.KillAuraPriority=v end})
+
+TabCombat:CreateSection("Parry")
+TabCombat:CreateToggle({Name="Auto Parry",CurrentValue=false,Flag="CB7",Callback=function(v) CFG.AutoParry=v end})
+TabCombat:CreateSlider({Name="Parry Cooldown",Range={5,200},Increment=5,Suffix="ms",CurrentValue=150,Flag="CB8",Callback=function(v) CFG.AutoParryCooldown=v/1000 end})
+
+TabMove:CreateSection("Speed")
+TabMove:CreateToggle({Name="Speed Hack",CurrentValue=false,Flag="MV1",Callback=function(v) CFG.SpeedEnabled=v end})
+TabMove:CreateSlider({Name="Speed Value",Range={16,300},Increment=2,CurrentValue=32,Flag="MV2",Callback=function(v) CFG.SpeedValue=v end})
+TabMove:CreateDropdown({Name="Speed Mode",Options={"WalkSpeed","BodyVelocity"},CurrentOption={"WalkSpeed"},Flag="MV3",Callback=function(v) CFG.SpeedMode=v end})
+TabMove:CreateToggle({Name="Bunny Hop",CurrentValue=false,Flag="MV4",Callback=function(v) CFG.BunnyHop=v end})
+
+TabMove:CreateSection("Jump")
+TabMove:CreateToggle({Name="Infinite Jump",CurrentValue=false,Flag="MV5",Callback=function(v) CFG.InfJump=v end})
+TabMove:CreateToggle({Name="Multi-Jump",CurrentValue=false,Flag="MV6",Callback=function(v) CFG.MultiJump=v end})
+TabMove:CreateSlider({Name="Multi-Jump Count",Range={2,10},Increment=1,CurrentValue=2,Flag="MV7",Callback=function(v) CFG.MultiJumpCount=v end})
+TabMove:CreateSlider({Name="Jump Power",Range={10,300},Increment=5,CurrentValue=55,Flag="MV8",Callback=function(v) CFG.JumpPower=v end})
+
+TabMove:CreateSection("Advanced")
+TabMove:CreateToggle({Name="Noclip",CurrentValue=false,Flag="MV9",Callback=function(v) CFG.Noclip=v end})
+TabMove:CreateToggle({Name="Fly",CurrentValue=false,Flag="MV10",Callback=function(v) CFG.Fly=v end})
+TabMove:CreateSlider({Name="Fly Speed",Range={10,300},Increment=10,CurrentValue=60,Flag="MV11",Callback=function(v) CFG.FlySpeed=v end})
+TabMove:CreateToggle({Name="Anti-Knockback",CurrentValue=false,Flag="MV12",Callback=function(v) CFG.AntiKnockback=v end})
+
+TabVisual:CreateSection("World Lighting")
+TabVisual:CreateToggle({Name="Full Bright",CurrentValue=false,Flag="VS1",Callback=function(v) CFG.FullBright=v end})
+TabVisual:CreateSlider({Name="Brightness Value",Range={1,20},Increment=1,CurrentValue=10,Flag="VS2",Callback=function(v) CFG.FullBrightVal=v end})
+TabVisual:CreateToggle({Name="No Fog",CurrentValue=false,Flag="VS3",Callback=function(v) CFG.NoFog=v end})
+TabVisual:CreateToggle({Name="Night Mode",CurrentValue=false,Flag="VS4",Callback=function(v) CFG.NightMode=v end})
+
+TabVisual:CreateSection("Chams Effects")
+TabVisual:CreateToggle({Name="Rainbow Chams",CurrentValue=false,Flag="VS5",Callback=function(v) CFG.RainbowChams=v end})
+TabVisual:CreateSlider({Name="Rainbow Speed",Range={1,50},Increment=1,CurrentValue=10,Flag="VS6",Callback=function(v) CFG.RainbowSpeed=v/10 end})
+
+TabCross:CreateSection("Crosshair")
+TabCross:CreateToggle({Name="Show Crosshair",CurrentValue=false,Flag="CH1",Callback=function(v)
+    CFG.Crosshair=v
+    if v then buildCH() elseif CHF then CHF:Destroy() CHF=nil end
+end})
+TabCross:CreateSlider({Name="Size",Range={4,40},Increment=1,Suffix="px",CurrentValue=10,Flag="CH2",Callback=function(v) CFG.CrosshairSize=v if CFG.Crosshair then buildCH() end end})
+TabCross:CreateSlider({Name="Gap",Range={0,20},Increment=1,Suffix="px",CurrentValue=4,Flag="CH3",Callback=function(v) CFG.CrosshairGap=v if CFG.Crosshair then buildCH() end end})
+TabCross:CreateToggle({Name="Center Dot",CurrentValue=true,Flag="CH4",Callback=function(v) CFG.CrosshairDot=v if CFG.Crosshair then buildCH() end end})
+TabCross:CreateColorPicker({Name="Crosshair Color",Color=Color3.fromRGB(255,255,255),Flag="CH5",Callback=function(v) CFG.CrosshairColor=v if CFG.Crosshair then buildCH() end end})
+
+TabConfig:CreateSection("Settings")
+TabConfig:CreateToggle({Name="Anti AFK",CurrentValue=true,Flag="CF1",Callback=function(v) CFG.AntiAFK=v end})
+TabConfig:CreateButton({Name="Destroy Script",Callback=function()
+    Rayfield:Destroy()
+end})
+
+local CoreGui = game:GetService("CoreGui")
+local ESPSG = Instance.new("ScreenGui")
+ESPSG.Name="AntiGodESP" ESPSG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+ESPSG.ResetOnSpawn=false ESPSG.DisplayOrder=999 ESPSG.IgnoreGuiInset=true
+pcall(function() ESPSG.Parent=CoreGui end)
+if not ESPSG.Parent then ESPSG.Parent=LocalPlayer.PlayerGui end
+
+local CHF = nil
+function buildCH()
+    if CHF then CHF:Destroy() CHF=nil end
+    if not CFG.Crosshair then return end
+    local sg=ESPSG
+    CHF=Instance.new("Frame")
+    CHF.Size=UDim2.new(1,0,1,0) CHF.BackgroundTransparency=1 CHF.ZIndex=80 CHF.Parent=sg
+    local vp=Camera.ViewportSize
+    local cx,cy=vp.X/2,vp.Y/2
+    local sz,th,gap=CFG.CrosshairSize,math.max(1,math.floor(CFG.CrosshairThick)),CFG.CrosshairGap
+    local col=CFG.CrosshairColor
+    local function mkL(px,py,sw,sh)
+        local l=Instance.new("Frame")
+        l.Size=UDim2.new(0,sw,0,sh)
+        l.Position=UDim2.new(0,cx+px-sw/2,0,cy+py-sh/2)
+        l.BackgroundColor3=col l.BorderSizePixel=0 l.ZIndex=81 l.Parent=CHF
+    end
+    mkL(-(sz+gap),0,sz,th) mkL(gap,0,sz,th) mkL(0,-(sz+gap),th,sz) mkL(0,gap,th,sz)
+    if CFG.CrosshairDot then
+        local d=Instance.new("Frame")
+        d.Size=UDim2.new(0,3,0,3) d.Position=UDim2.new(0,cx-1,0,cy-1)
+        d.BackgroundColor3=col d.BorderSizePixel=0 d.ZIndex=82 d.Parent=CHF
+        local c=Instance.new("UICorner") c.CornerRadius=UDim.new(0,2) c.Parent=d
+    end
+end
+
+local BONES={
+    {"Head","UpperTorso"},{"UpperTorso","LowerTorso"},
+    {"UpperTorso","LeftUpperArm"},{"LeftUpperArm","LeftLowerArm"},{"LeftLowerArm","LeftHand"},
+    {"UpperTorso","RightUpperArm"},{"RightUpperArm","RightLowerArm"},{"RightLowerArm","RightHand"},
+    {"LowerTorso","LeftUpperLeg"},{"LeftUpperLeg","LeftLowerLeg"},{"LeftLowerLeg","LeftFoot"},
+    {"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"},{"RightLowerLeg","RightFoot"},
+}
+
+local ESPO={}
+local useD=false
+pcall(function() local t=Drawing.new("Square") t:Remove() useD=true end)
+
+local function mkD(t)
+    if not useD then return {Visible=false,Remove=function()end} end
+    local ok,d=pcall(function() return Drawing.new(t) end)
+    return ok and d or {Visible=false,Remove=function()end}
+end
+
+local function createESP(p)
+    if p==LocalPlayer then return end
+    local o={Box=mkD("Square"),Name=mkD("Text"),HP=mkD("Square"),HPF=mkD("Square"),
+             Dist=mkD("Text"),Tracer=mkD("Line"),HDot=mkD("Circle"),Bones={}}
+    for i=1,#BONES do o.Bones[i]=mkD("Line") end
+    ESPO[p]=o
+end
+local function hideESP(o)
+    if not o then return end
+    for _,v in pairs(o) do
+        if type(v)=="table" then for _,b in pairs(v) do pcall(function() b.Visible=false end) end
+        else pcall(function() v.Visible=false end) end
+    end
+end
+local function removeESP(p)
+    local o=ESPO[p] if not o then return end
+    for _,v in pairs(o) do
+        if type(v)=="table" then for _,b in pairs(v) do pcall(function() b:Remove() end) end
+        else pcall(function() v:Remove() end) end
+    end
+    ESPO[p]=nil
+end
+
+for _,p in ipairs(Players:GetPlayers()) do createESP(p) end
+Players.PlayerAdded:Connect(createESP)
+Players.PlayerRemoving:Connect(removeESP)
+
+local FOVC=mkD("Circle")
+local rHue=0
+local flyBV,flyBG
+local jmpCount=0
+local auraT=0
+
+RunService.RenderStepped:Connect(function(dt)
+    rHue=(rHue+dt*CFG.RainbowSpeed*0.5)%1
+
+    pcall(function()
+        FOVC.Visible=CFG.ShowFOVCircle and CFG.AimbotEnabled
+        FOVC.Radius=CFG.AimbotFOV
+        local vp=Camera.ViewportSize
+        FOVC.Position=Vector2.new(vp.X/2,vp.Y/2)
+        FOVC.Color=CFG.FOVCircleColor
+        FOVC.Thickness=CFG.FOVCircleThick
+        FOVC.Filled=CFG.FOVCircleFilled
+        FOVC.Transparency=CFG.FOVCircleFilled and 0.88 or 1
+        FOVC.NumSides=64
+    end)
+
+    for pl,o in pairs(ESPO) do
+        local ch=getChar(pl) local rt=getRoot(pl) local hm=getHum(pl)
+        if not ch or not rt or not hm or hm.Health<=0 or not CFG.ESPEnabled then hideESP(o) continue end
+        if CFG.ESPTeamCheck and not CFG.ESPShowTeammates and teammate(pl) then hideESP(o) continue end
+        local d=getDist(pl) if d>CFG.ESPMaxDistance then hideESP(o) continue end
+
+        local col=(CFG.ESPTeamCheck and teammate(pl)) and CFG.ESPTeamColor or CFG.ESPBoxColor
+        if CFG.RainbowChams then col=Color3.fromHSV(rHue,1,1) end
+
+        local head=ch:FindFirstChild("Head")
+        local torso=ch:FindFirstChild("LowerTorso") or ch:FindFirstChild("Torso")
+
+        if head and torso then
+            local hsp,hv=Camera:WorldToViewportPoint(head.Position+Vector3.new(0,head.Size.Y/2+0.1,0))
+            local fsp,_ =Camera:WorldToViewportPoint(torso.Position-Vector3.new(0,torso.Size.Y/2+0.5,0))
+            if hv then
+                local bh=math.abs(hsp.Y-fsp.Y) local bw=bh*0.6 local cx=hsp.X
+                local top=math.min(hsp.Y,fsp.Y)
+
+                pcall(function()
+                    o.Box.Visible=CFG.ESPBoxes o.Box.Size=Vector2.new(bw,bh)
+                    o.Box.Position=Vector2.new(cx-bw/2,top) o.Box.Color=col
+                    o.Box.Thickness=CFG.ESPBoxThickness o.Box.Filled=CFG.ESPBoxFilled
+                    o.Box.Transparency=CFG.ESPBoxFilled and (1-CFG.ESPBoxFillTrans) or 1
+                end)
+                pcall(function()
+                    o.Name.Visible=CFG.ESPNames o.Name.Text=pl.DisplayName
+                    o.Name.Size=CFG.ESPNameSize o.Name.Position=Vector2.new(cx,top-CFG.ESPNameSize-3)
+                    o.Name.Color=CFG.ESPNameColor o.Name.Center=true o.Name.Outline=CFG.ESPNameOutline
+                end)
+                pcall(function()
+                    o.Dist.Visible=CFG.ESPDistance o.Dist.Text=math.floor(d).."st"
+                    o.Dist.Size=CFG.ESPDistanceSize o.Dist.Position=Vector2.new(cx,top+bh+2)
+                    o.Dist.Color=CFG.ESPDistanceColor o.Dist.Center=true o.Dist.Outline=true
+                end)
+                if CFG.ESPHealth then
+                    local hp=math.clamp(hm.Health/math.max(hm.MaxHealth,1),0,1)
+                    local rr=hp<0.5 and 1 or 2-2*hp local gg=hp>0.5 and 1 or 2*hp
+                    local hc=CFG.ESPHealthGradient and Color3.new(rr,gg,0) or col
+                    local bx=cx-bw/2-6
+                    pcall(function()
+                        o.HP.Visible=true o.HP.Size=Vector2.new(4,bh) o.HP.Position=Vector2.new(bx,top)
+                        o.HP.Color=Color3.fromRGB(30,30,30) o.HP.Filled=true o.HP.Transparency=0.5
+                        o.HPF.Visible=true o.HPF.Size=Vector2.new(4,bh*hp)
+                        o.HPF.Position=Vector2.new(bx,top+bh*(1-hp)) o.HPF.Color=hc o.HPF.Filled=true o.HPF.Transparency=0
+                    end)
+                else pcall(function() o.HP.Visible=false o.HPF.Visible=false end) end
+
+                pcall(function()
+                    o.Tracer.Visible=CFG.ESPTracers
+                    local vp=Camera.ViewportSize
+                    local oy=CFG.ESPTracerOrigin=="Bottom" and vp.Y or (CFG.ESPTracerOrigin=="Top" and 0 or vp.Y/2)
+                    o.Tracer.From=Vector2.new(vp.X/2,oy) o.Tracer.To=Vector2.new(cx,top+bh/2)
+                    o.Tracer.Color=CFG.ESPTracerColor o.Tracer.Thickness=CFG.ESPTracerThick
+                end)
+                pcall(function()
+                    o.HDot.Visible=CFG.ESPHeadDot o.HDot.Position=Vector2.new(cx,hsp.Y)
+                    o.HDot.Radius=CFG.ESPHeadDotSize o.HDot.Color=CFG.ESPHeadDotColor
+                    o.HDot.Filled=true o.HDot.Transparency=0
+                end)
+                if CFG.ESPSkeleton then
+                    for i,pair in ipairs(BONES) do
+                        if o.Bones[i] then
+                            local b0=ch:FindFirstChild(pair[1]) local b1=ch:FindFirstChild(pair[2])
+                            if b0 and b1 then
+                                local p0,v0=Camera:WorldToViewportPoint(b0.Position)
+                                local p1,v1=Camera:WorldToViewportPoint(b1.Position)
+                                pcall(function()
+                                    o.Bones[i].Visible=v0 and v1
+                                    o.Bones[i].From=Vector2.new(p0.X,p0.Y) o.Bones[i].To=Vector2.new(p1.X,p1.Y)
+                                    o.Bones[i].Color=CFG.ESPSkeletonColor o.Bones[i].Thickness=CFG.ESPSkeletonThick
+                                end)
+                            else pcall(function() o.Bones[i].Visible=false end) end
+                        end
+                    end
+                else for _,b in ipairs(o.Bones) do pcall(function() b.Visible=false end) end end
+            else hideESP(o) end
+        end
+    end
+end)
+
+local function getTarget()
+    local best,bd,bp=nil,CFG.AimbotFOV,nil
+    local vp=Camera.ViewportSize
+    local ctr=Vector2.new(vp.X/2,vp.Y/2)
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p==LocalPlayer then continue end
+        if CFG.AimbotTeamCheck and teammate(p) then continue end
+        if not alive(p) then continue end
+        local ch=getChar(p) if not ch then continue end
+        local pt=ch:FindFirstChild(CFG.AimbotPart) or ch:FindFirstChild("Head") if not pt then continue end
+        if CFG.AimbotVisible then
+            local ray=Ray.new(Camera.CFrame.Position,(pt.Position-Camera.CFrame.Position).Unit*5000)
+            local hit=Workspace:FindPartOnRayWithIgnoreList(ray,{getChar(LocalPlayer)})
+            if hit and not hit:IsDescendantOf(ch) then continue end
+        end
+        local sp,vis=Camera:WorldToViewportPoint(pt.Position) if not vis then continue end
+        local d=(Vector2.new(sp.X,sp.Y)-ctr).Magnitude
+        if d<bd then best=p bd=d bp=pt end
+    end
+    return best,bp
+end
+
+RunService.Heartbeat:Connect(function(dt)
+    local now=tick()
+
+    if CFG.AimbotEnabled then
+        local holding=false
+        pcall(function()
+            if typeof(CFG.AimbotKey)=="EnumItem" then
+                if CFG.AimbotKey.EnumType==Enum.UserInputType then
+                    holding=UserInputService:IsMouseButtonPressed(CFG.AimbotKey)
+                else holding=UserInputService:IsKeyDown(CFG.AimbotKey) end
+            end
+        end)
+        if holding then
+            local _,pt=getTarget()
+            if pt then
+                local pred=pt.Position
+                if CFG.AimbotPrediction then
+                    local vel=pt.AssemblyLinearVelocity or Vector3.new()
+                    pred=pt.Position+vel*CFG.AimbotPredStrength
+                end
+                if math.random(1,100)<=CFG.AimbotHitChance then
+                    local tp,_=Camera:WorldToViewportPoint(pred)
+                    local dx,dy=tp.X-Mouse.X,tp.Y-Mouse.Y
+                    local sm=CFG.AimbotSmooth
+                    if CFG.AimbotStickyAim and Vector2.new(dx,dy).Magnitude<CFG.AimbotStickyRange then sm=sm*0.25 end
+                    pcall(function() mousemoverel(dx*(1-sm),dy*(1-sm)) end)
+                end
+            end
+        end
+    end
+
+    if CFG.KillAura and now-auraT>=CFG.KillAuraCooldown then
+        auraT=now
+        local best,bv=nil,math.huge
+        for _,p in ipairs(Players:GetPlayers()) do
+            if p==LocalPlayer then continue end
+            if CFG.KillAuraTeamCheck and teammate(p) then continue end
+            if not alive(p) then continue end
+            local d=getDist(p) if d>CFG.KillAuraRange then continue end
+            local v=d
+            if CFG.KillAuraPriority=="Lowest HP" then local h=getHum(p) v=h and h.Health or 9999
+            elseif CFG.KillAuraPriority=="Random" then v=math.random() end
+            if v<bv then best=p bv=v end
+        end
+        if best then
+            local ch=LocalPlayer.Character
+            if ch then
+                local tool=ch:FindFirstChildOfClass("Tool")
+                if tool then
+                    local rem=tool:FindFirstChildOfClass("RemoteEvent") or tool:FindFirstChildOfClass("RemoteFunction")
+                    if rem then local tr=getRoot(best) if tr then pcall(function() rem:FireServer(tr.Position) end) end end
+                end
+            end
+        end
+    end
+
+    if CFG.SpeedEnabled then
+        local h=getHum(LocalPlayer) if h and CFG.SpeedMode=="WalkSpeed" then h.WalkSpeed=CFG.SpeedValue end
+    else
+        local h=getHum(LocalPlayer) if h and h.WalkSpeed~=16 then h.WalkSpeed=16 end
+    end
+
+    if CFG.Fly then
+        local rt=getRoot(LocalPlayer)
+        if rt then
+            if not flyBV or not flyBV.Parent then
+                flyBV=Instance.new("BodyVelocity") flyBV.MaxForce=Vector3.new(1e9,1e9,1e9) flyBV.Velocity=Vector3.new() flyBV.Parent=rt
+                flyBG=Instance.new("BodyGyro") flyBG.MaxTorque=Vector3.new(1e9,1e9,1e9) flyBG.CFrame=rt.CFrame flyBG.Parent=rt
+            end
+            local dir=Vector3.new()
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir=dir+Camera.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir=dir-Camera.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir=dir-Camera.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir=dir+Camera.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir=dir+Vector3.new(0,1,0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir=dir-Vector3.new(0,1,0) end
+            flyBV.Velocity=dir.Magnitude>0 and dir.Unit*CFG.FlySpeed or Vector3.new()
+        end
+    else
+        if flyBV and flyBV.Parent then flyBV:Destroy() end
+        if flyBG and flyBG.Parent then flyBG:Destroy() end
+    end
+
+    if CFG.FullBright then
+        Lighting.Brightness=CFG.FullBrightVal Lighting.ClockTime=14 Lighting.FogEnd=1e9
+        Lighting.GlobalShadows=false Lighting.Ambient=Color3.fromRGB(255,255,255) Lighting.OutdoorAmbient=Color3.fromRGB(255,255,255)
+    end
+    if CFG.NoFog then Lighting.FogEnd=1e9 Lighting.FogStart=1e9 end
+    if CFG.NightMode then
+        Lighting.Brightness=0 Lighting.ClockTime=0
+        Lighting.Ambient=Color3.fromRGB(0,0,0) Lighting.OutdoorAmbient=Color3.fromRGB(0,0,0)
+    end
+    if CFG.AntiKnockback then
+        local rt=getRoot(LocalPlayer)
+        if rt then local bv=rt:FindFirstChildOfClass("BodyVelocity") if bv and not CFG.Fly then bv.Velocity=Vector3.new() end end
+    end
+end)
+
+UserInputService.JumpRequest:Connect(function()
+    if CFG.InfJump then local h=getHum(LocalPlayer) if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end end
+    if CFG.MultiJump then
+        local h=getHum(LocalPlayer)
+        if h and h:GetState()==Enum.HumanoidStateType.Freefall and jmpCount<CFG.MultiJumpCount then
+            jmpCount=jmpCount+1 h:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+RunService.Stepped:Connect(function()
+    if CFG.Noclip then
+        local ch=getChar(LocalPlayer)
+        if ch then for _,p in ipairs(ch:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide=false end end end
+    end
+    local h=getHum(LocalPlayer)
+    if h then
+        if h:GetState()==Enum.HumanoidStateType.Landed then jmpCount=0 end
+        if CFG.InfJump then h.JumpPower=CFG.JumpPower end
+    end
+end)
+
+LocalPlayer.Idled:Connect(function()
+    if not CFG.AntiAFK then return end
+    VirtualUser:Button2Down(Vector2.new(0,0),CFrame.new())
+    task.wait(1)
+    VirtualUser:Button2Up(Vector2.new(0,0),CFrame.new())
+end)
+
+pcall(function()
+    if hookmetamethod then
+        local old; old=hookmetamethod(game,"__index",function(t,k)
+            if CFG.SilentAim and k=="Hit" and rawget(t,"ClassName")=="Mouse" then
+                local _,pt=getTarget()
+                if pt then
+                    local vp=Camera.ViewportSize
+                    local sp,_=Camera:WorldToViewportPoint(pt.Position)
+                    local d=Vector2.new(sp.X-vp.X/2,sp.Y-vp.Y/2).Magnitude
+                    if d<=CFG.SilentAimFOV and math.random(1,100)<=CFG.SilentAimChance then
+                        return pt.CFrame
+                    end
+                end
+            end
+            return old(t,k)
+        end)
+    end
+end)
+
+Rayfield:Notify({Title="Anti God",Content="Loaded successfully!",Duration=4,Image="zap"})
