@@ -1,0 +1,699 @@
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+
+local runService = game:GetService("RunService")
+local workspace = game:GetService("Workspace")
+local players = game:GetService("Players")
+local localPlayer = players.LocalPlayer
+local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+local UserInputService = game:GetService("UserInputService")
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local heartbeatConnection
+local UseRage = false
+local sliderValue = 20
+local focusedBall = nil
+local stayspawnshit = false
+
+local function onCharacterAdded(newCharacter)
+    character = newCharacter
+end
+
+localPlayer.CharacterAdded:Connect(onCharacterAdded)
+
+local TruValue = Instance.new("StringValue")
+if workspace:FindFirstChild("AbilityThingyk1212") then
+    workspace:FindFirstChild("AbilityThingyk1212"):Remove()
+    task.wait(0.1)
+    TruValue.Parent = workspace
+    TruValue.Name = "AbilityThingyk1212"
+    TruValue.Value = "Dash"
+else
+    TruValue.Parent = workspace
+    TruValue.Name = "AbilityThingyk1212"
+    TruValue.Value = "Dash"
+end
+
+local Window = Rayfield:CreateWindow({
+   Name = "Blueberry",
+   LoadingTitle = "Blueberry",
+   LoadingSubtitle = "by Fix Code",
+   ConfigurationSaving = {
+      Enabled = true,
+      FolderName = "BlueberryConfig",
+      FileName = "Configuration"
+   },
+   Discord = {
+      Enabled = false,
+      Invite = "",
+      RememberJoins = false
+   },
+   KeySystem = false,
+   KeySettings = {
+      Title = "Blueberry",
+      Subtitle = "Key System",
+      Note = "No key needed",
+      FileName = "BlueberryKey",
+      SaveKey = false,
+      GrabKeyFromSite = false,
+      Key = ""
+   }
+})
+
+local AutoParry = Window:CreateTab("Auto Parry", 13014537525)
+local Main = Window:CreateTab("Main", 13014546637)
+local Misc = Window:CreateTab("Misc", 13014546637)
+local AutoOpen = Window:CreateTab("Auto Open", 13014546637)
+local Misc2 = Window:CreateTab("Misc2", 13014546637)
+local Skins = Window:CreateTab("Skins", 13014546637)
+
+local function startAutoParry()
+    local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+    local ballsFolder = workspace:FindFirstChild("Balls")
+    
+    if not ballsFolder then
+        print("Balls folder not found!")
+        return
+    end
+    
+    local parryRemote = pcall(function() return replicatedStorage.Remotes.ParryButtonPress end) and replicatedStorage.Remotes.ParryButtonPress
+    local abilityRemote = pcall(function() return replicatedStorage.Remotes.AbilityButtonPress end) and replicatedStorage.Remotes.AbilityButtonPress
+
+    if not parryRemote then
+        print("ParryButtonPress remote not found!")
+        return
+    end
+
+    print("Auto Parry started!")
+
+    local function chooseNewFocusedBall()
+        local balls = ballsFolder:GetChildren()
+        local closestBall = nil
+        local closestDistance = math.huge
+        
+        for _, ball in ipairs(balls) do
+            pcall(function()
+                if ball:IsA("BasePart") and ball:FindFirstChild("BodyVelocity") or ball:FindFirstChild("Velocity") then
+                    local isRealBall = ball:GetAttribute("realBall")
+                    
+                    if isRealBall == true then
+                        local distance = (ball.Position - character.HumanoidRootPart.Position).Magnitude
+                        if distance < closestDistance then
+                            closestBall = ball
+                            closestDistance = distance
+                        end
+                    end
+                end
+            end)
+        end
+        
+        if closestBall then
+            focusedBall = closestBall
+        else
+            focusedBall = nil
+        end
+    end
+
+    local BASE_THRESHOLD = 0.15
+    local VELOCITY_SCALING_FACTOR_FAST = 0.050
+    local VELOCITY_SCALING_FACTOR_SLOW = 0.1
+
+    local function getDynamicThreshold(ballVelocityMagnitude)
+        if ballVelocityMagnitude > 60 then
+            return math.max(0.20, BASE_THRESHOLD - (ballVelocityMagnitude * VELOCITY_SCALING_FACTOR_FAST))
+        else
+            return math.min(0.01, BASE_THRESHOLD + (ballVelocityMagnitude * VELOCITY_SCALING_FACTOR_SLOW))
+        end
+    end
+
+    local function timeUntilImpact(ballVelocity, distanceToPlayer, playerVelocity)
+        if not focusedBall then return math.huge end
+        
+        local directionToPlayer = (character.HumanoidRootPart.Position - focusedBall.Position).Unit
+        local velocityTowardsPlayer = ballVelocity:Dot(directionToPlayer) - playerVelocity:Dot(directionToPlayer)
+        
+        if velocityTowardsPlayer <= 0 then
+            return math.huge
+        end
+        
+        return (distanceToPlayer - sliderValue) / velocityTowardsPlayer
+    end
+
+    local function checkBallDistance()
+        pcall(function()
+            if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+
+            local charPos = character.HumanoidRootPart.Position
+            local charVel = character.HumanoidRootPart.Velocity
+
+            if focusedBall and (not focusedBall.Parent or not focusedBall:IsDescendantOf(workspace)) then
+                chooseNewFocusedBall()
+            end
+            
+            if not focusedBall then 
+                chooseNewFocusedBall()
+            end
+
+            local ball = focusedBall
+            if not ball or not ball.Parent then return end
+            
+            local distanceToPlayer = (ball.Position - charPos).Magnitude
+            local ballVelocityTowardsPlayer = ball.Velocity:Dot((charPos - ball.Position).Unit)
+            
+            if distanceToPlayer < 10 then
+                parryRemote:Fire()
+                return
+            end
+
+            if timeUntilImpact(ball.Velocity, distanceToPlayer, charVel) < getDynamicThreshold(ballVelocityTowardsPlayer) then
+                parryRemote:Fire()
+            end
+        end)
+    end
+
+    heartbeatConnection = game:GetService("RunService").Heartbeat:Connect(function()
+        checkBallDistance()
+    end)
+end
+
+local function stopAutoParry()
+    if heartbeatConnection then
+        heartbeatConnection:Disconnect()
+        heartbeatConnection = nil
+    end
+end
+
+local Descrip = AutoParry:CreateButton({
+   Name = "Credits",
+   Callback = function()
+    Rayfield:Notify({
+   Title = "Credits",
+   Content = "Blueberry Script by Fix Code",
+   Duration = 5,
+   Image = 4483362458,
+   Actions = {
+      Ignore = {
+         Name = "Okay!",
+         Callback = function()
+         print("Thanks for using Blueberry!")
+      end
+   },
+},
+})
+end
+})
+
+local AutoParrySection = AutoParry:CreateSection("Auto Parry")
+
+local AutoParryToggle = AutoParry:CreateToggle({
+    Name = "Auto Parry",
+    CurrentValue = false,
+    Flag = "AutoParryFlag",
+    Callback = function(Value)
+        if Value then
+            startAutoParry()
+        else
+            stopAutoParry()
+        end
+    end,
+})
+
+local AutoRagingDeflect = AutoParry:CreateToggle({
+    Name = "Auto Rage Parry",
+    CurrentValue = false,
+    Flag = "AutoRagingDeflectFlag",
+    Callback = function(Value)
+        UseRage = Value
+    end,
+})
+
+local HalfLegitSpawn = AutoParry:CreateToggle({
+    Name = "Half Legit Stay Spawn",
+    CurrentValue = false,
+    Flag = "StaySpawnFlag",
+    Callback = function(Value)
+        stayspawnshit = Value
+        if Value then
+            task.spawn(function()
+                while stayspawnshit do 
+                    wait()
+                    if stayspawnshit and character then
+                        character.Parent = workspace.Alive
+                    end
+                end
+            end)
+        end
+    end,
+})
+
+local ParryDistanceSlider = AutoParry:CreateSlider({
+    Name = "Parry Distance",
+    Min = 0,
+    Max = 100,
+    Increment = 1,
+    Suffix = " studs",
+    CurrentValue = 20,
+    Flag = "ParryDistanceFlag",
+    Callback = function(Value)
+        sliderValue = Value
+    end,
+})
+
+local MainSection = Main:CreateSection("Main Features")
+
+local AutoBallGrab = Main:CreateToggle({
+    Name = "Auto Ball Grab",
+    CurrentValue = false,
+    Flag = "AutoBallGrabFlag",
+    Callback = function(Value)
+        if Value then
+            task.spawn(function()
+                while Value do
+                    pcall(function()
+                        local ballsFolder = workspace:FindFirstChild("Balls")
+                        if ballsFolder then
+                            for _, ball in ipairs(ballsFolder:GetChildren()) do
+                                if ball:GetAttribute("realBall") == true and character:FindFirstChild("HumanoidRootPart") then
+                                    firetouchinterest(character.HumanoidRootPart, ball, 0)
+                                    firetouchinterest(character.HumanoidRootPart, ball, 1)
+                                end
+                            end
+                        end
+                    end)
+                    wait(0.05)
+                end
+            end)
+        end
+    end,
+})
+
+local AutoDash = Main:CreateToggle({
+    Name = "Auto Dash",
+    CurrentValue = false,
+    Flag = "AutoDashFlag",
+    Callback = function(Value)
+        if Value then
+            task.spawn(function()
+                while Value do
+                    pcall(function()
+                        local dashRemote = replicatedStorage:FindFirstChild("Remotes"):FindFirstChild("DashButtonPress")
+                        if dashRemote then
+                            dashRemote:Fire()
+                        end
+                    end)
+                    wait(0.5)
+                end
+            end)
+        end
+    end,
+})
+
+local TeleportBallButton = Main:CreateButton({
+    Name = "Teleport To Ball",
+    Callback = function()
+        pcall(function()
+            local ballsFolder = workspace:FindFirstChild("Balls")
+            if ballsFolder and character:FindFirstChild("HumanoidRootPart") then
+                for _, ball in ipairs(ballsFolder:GetChildren()) do
+                    if ball:GetAttribute("realBall") == true then
+                        character.HumanoidRootPart.CFrame = ball.CFrame + Vector3.new(0, 5, 0)
+                        break
+                    end
+                end
+            end
+        end)
+    end,
+})
+
+local MiscSection = Misc:CreateSection("Miscellaneous")
+
+local InfiniteJump = Misc:CreateToggle({
+    Name = "Infinite Jump",
+    CurrentValue = false,
+    Flag = "InfJumpFlag",
+    Callback = function(Value)
+        if Value then
+            UserInputService.InputBegan:Connect(function(input, gameProcessed)
+                if gameProcessed then return end
+                if input.KeyCode == Enum.KeyCode.Space and Value then
+                    pcall(function()
+                        local humanoid = character:FindFirstChildOfClass("Humanoid")
+                        if humanoid then
+                            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                        end
+                    end)
+                end
+            end)
+        end
+    end,
+})
+
+local Noclip = Misc:CreateToggle({
+    Name = "Noclip",
+    CurrentValue = false,
+    Flag = "NoclipFlag",
+    Callback = function(Value)
+        if Value then
+            task.spawn(function()
+                while Value do
+                    wait()
+                    if character then
+                        for _, part in ipairs(character:GetDescendants()) do
+                            if part:IsA("BasePart") then
+                                part.CanCollide = false
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end,
+})
+
+local AntiKnockback = Misc:CreateToggle({
+    Name = "Anti Knockback",
+    CurrentValue = false,
+    Flag = "AntiKnockbackFlag",
+    Callback = function(Value)
+        if Value then
+            task.spawn(function()
+                while Value do
+                    wait()
+                    if character and character:FindFirstChild("HumanoidRootPart") then
+                        character.HumanoidRootPart.Velocity = Vector3.new(0, character.HumanoidRootPart.Velocity.Y, 0)
+                    end
+                end
+            end)
+        end
+    end,
+})
+
+local SpeedBoost = Misc:CreateToggle({
+    Name = "Speed Boost",
+    CurrentValue = false,
+    Flag = "SpeedBoostFlag",
+    Callback = function(Value)
+        if Value then
+            task.spawn(function()
+                while Value do
+                    wait()
+                    if character and character:FindFirstChild("HumanoidRootPart") then
+                        character.HumanoidRootPart.Velocity = character.HumanoidRootPart.Velocity * 1.05
+                    end
+                end
+            end)
+        end
+    end,
+})
+
+local AutoOpenSection = AutoOpen:CreateSection("Auto Open")
+
+local AutoChest = AutoOpen:CreateToggle({
+    Name = "Auto Open Chest",
+    CurrentValue = false,
+    Flag = "AutoChestFlag",
+    Callback = function(Value)
+        if Value then
+            task.spawn(function()
+                while Value do
+                    wait(0.1)
+                    pcall(function()
+                        local chests = workspace:FindFirstChild("Chests")
+                        if chests and character:FindFirstChild("HumanoidRootPart") then
+                            for _, chest in ipairs(chests:GetChildren()) do
+                                local distance = (character.HumanoidRootPart.Position - chest.Position).Magnitude
+                                if distance < 100 then
+                                    firetouchinterest(character.HumanoidRootPart, chest, 0)
+                                    firetouchinterest(character.HumanoidRootPart, chest, 1)
+                                end
+                            end
+                        end
+                    end)
+                end
+            end)
+        end
+    end,
+})
+
+local Misc2Section = Misc2:CreateSection("Advanced Settings")
+
+local WalkSpeed = Misc2:CreateSlider({
+    Name = "Walk Speed",
+    Min = 0,
+    Max = 150,
+    Increment = 1,
+    Suffix = "",
+    CurrentValue = 16,
+    Flag = "WalkSpeedFlag",
+    Callback = function(Value)
+        pcall(function()
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid.WalkSpeed = Value
+            end
+        end)
+    end,
+})
+
+local JumpPower = Misc2:CreateSlider({
+    Name = "Jump Power",
+    Min = 0,
+    Max = 150,
+    Increment = 1,
+    Suffix = "",
+    CurrentValue = 50,
+    Flag = "JumpPowerFlag",
+    Callback = function(Value)
+        pcall(function()
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid.JumpPower = Value
+            end
+        end)
+    end,
+})
+
+local GravitySlider = Misc2:CreateSlider({
+    Name = "Gravity",
+    Min = 0,
+    Max = 196.2,
+    Increment = 1,
+    Suffix = "",
+    CurrentValue = 196.2,
+    Flag = "GravityFlag",
+    Callback = function(Value)
+        workspace.Gravity = Value
+    end,
+})
+
+local CameraZoom = Misc2:CreateSlider({
+    Name = "Camera Distance",
+    Min = 0,
+    Max = 100,
+    Increment = 1,
+    Suffix = "",
+    CurrentValue = 15,
+    Flag = "CameraZoomFlag",
+    Callback = function(Value)
+        pcall(function()
+            if character:FindFirstChild("HumanoidRootPart") then
+                workspace.CurrentCamera.CFrame = character.HumanoidRootPart.CFrame * CFrame.new(0, 0, Value)
+            end
+        end)
+    end,
+})
+
+local LimitedSkinsSection = Skins:CreateSection("Limited Skins")
+
+local EmpyreanBtn = Skins:CreateButton({
+   Name = "Empyrean Greatblade",
+   Callback = function()
+        pcall(function()
+            local Empyreansword = game:GetService("ReplicatedStorage").Misc.Swords.Limited["Empyrean Greatblade"]
+            local SkinSwordClone = Empyreansword:FindFirstChild("Meshes/Sword"):Clone()
+            local Katanamesh = character:FindFirstChildOfClass("Model"):FindFirstChild("KatanaMesh")
+
+            SkinSwordClone.Anchored = false
+            SkinSwordClone.Parent = character:FindFirstChildOfClass("Model")
+            SkinSwordClone.CFrame = Katanamesh.CFrame
+            
+            local weldthing = Instance.new("Weld")
+            weldthing.Parent = SkinSwordClone
+            weldthing.Part0 = SkinSwordClone
+            weldthing.Part1 = Katanamesh
+            Katanamesh.Transparency = 1
+
+            character.HumanoidRootPart.CFrame = CFrame.new(-233.710556, 123.299973, 203.648102)
+            task.wait(0.1)
+            SkinSwordClone.Rotation = Vector3.new(-75.41799926757812, -90, 0)
+            
+            Rayfield:Notify({
+               Title = "Skin Applied",
+               Content = "Empyrean Greatblade equipped",
+               Duration = 2,
+            })
+        end)
+   end
+})
+
+local OniClawsBtn = Skins:CreateButton({
+   Name = "Oni Claws",
+   Callback = function()
+        pcall(function()
+            local claws = game:GetService("ReplicatedStorage").Misc.Swords.Limited["Oni Claws"]:Clone()
+            local Katanamesh = character:FindFirstChildOfClass("Model"):FindFirstChild("KatanaMesh")
+            local sword = character:FindFirstChildOfClass("Model")
+
+            local Glove = claws
+            local Cestus1 = Glove:FindFirstChild("Cestus")
+            local Cestus2 = Glove:FindFirstChild("Cestus2")
+
+            Glove.Parent = sword
+            
+            local leftarm = Instance.new("Weld")
+            leftarm.Name = "Left Arm"
+            leftarm.Parent = Cestus1
+            leftarm.Part0 = Cestus1.zaza
+            leftarm.Part1 = character:FindFirstChild("Left Arm")
+
+            local rightarm = Instance.new("Weld")
+            rightarm.Name = "Right Arm"
+            rightarm.Parent = Cestus2
+            rightarm.Part0 = Cestus2.zaza
+            rightarm.Part1 = character:FindFirstChild("Right Arm")
+            
+            Katanamesh.Transparency = 1
+
+            character:FindFirstChildOfClass("Model").sord:Remove()
+            character:FindFirstChildOfClass("Model").handle:Remove()
+            character:FindFirstChildOfClass("Model"):FindFirstChild("WhiteFlameCharges"):Remove()
+            character:FindFirstChildOfClass("Model"):FindFirstChild("Excalibur"):Remove()
+            
+            Rayfield:Notify({
+               Title = "Skin Applied",
+               Content = "Oni Claws equipped",
+               Duration = 2,
+            })
+        end)
+   end
+})
+
+local DoubleOniBtn = Skins:CreateButton({
+   Name = "Double Oni Claws",
+   Callback = function()
+        pcall(function()
+            local claws = game:GetService("ReplicatedStorage").Misc.Swords.Limited["Oni Claws"]:Clone()
+            local claws2 = game:GetService("ReplicatedStorage").Misc.Swords.Limited["Oni Claws"]:Clone()
+            local Katanamesh = character:FindFirstChildOfClass("Model"):FindFirstChild("KatanaMesh")
+            local sword = character:FindFirstChildOfClass("Model")
+
+            local Glove = claws
+            local Glove2 = claws2
+            local Cestus1 = Glove:FindFirstChild("Cestus")
+            local Cestus2 = Glove:FindFirstChild("Cestus2")
+            local Cestus1_2 = Glove2:FindFirstChild("Cestus")
+            local Cestus2_2 = Glove2:FindFirstChild("Cestus2")
+
+            Glove.Parent = sword
+            local leftarm = Instance.new("Weld")
+            leftarm.Name = "Left Arm"
+            leftarm.Parent = Cestus1
+            leftarm.Part0 = Cestus1.zaza
+            leftarm.Part1 = character:FindFirstChild("Left Arm")
+
+            local rightarm = Instance.new("Weld")
+            rightarm.Name = "Right Arm"
+            rightarm.Parent = Cestus2
+            rightarm.Part0 = Cestus2.zaza
+            rightarm.Part1 = character:FindFirstChild("Right Arm")
+
+            Glove2.Parent = sword
+            local lfetarm = Instance.new("Weld")
+            lfetarm.Name = "Lfet Arm"
+            lfetarm.Parent = Cestus2_2
+            lfetarm.Part0 = Cestus2_2.zaza
+            lfetarm.Part1 = character:FindFirstChild("Left Arm")
+
+            local rarm = Instance.new("Weld")
+            rarm.Name = "Rgiht Arm"
+            rarm.Parent = Cestus1_2
+            rarm.Part0 = Cestus1_2.zaza
+            rarm.Part1 = character:FindFirstChild("Right Arm")
+
+            Katanamesh.Transparency = 1
+
+            character:FindFirstChildOfClass("Model").sord:Remove()
+            character:FindFirstChildOfClass("Model").handle:Remove()
+            character:FindFirstChildOfClass("Model"):FindFirstChild("WhiteFlameCharges"):Remove()
+            character:FindFirstChildOfClass("Model"):FindFirstChild("Excalibur"):Remove()
+            
+            Rayfield:Notify({
+               Title = "Skin Applied",
+               Content = "Double Oni Claws equipped",
+               Duration = 2,
+            })
+        end)
+   end
+})
+
+local UniqueSkinsSection = Skins:CreateSection("Unique")
+
+local GodSaberBtn = Skins:CreateButton({
+   Name = "God Saber",
+   Callback = function()
+        pcall(function()
+            local Katanamesh = character:FindFirstChildOfClass("Model"):FindFirstChild("KatanaMesh")
+            local godsaber = game:GetService("ReplicatedStorage").Misc.Swords.Unique.Godsaber
+
+            local SkinSwordClone = godsaber:Clone()
+            local godkatanamesh = godsaber:FindFirstChild("KatanaMesh")
+            local godhandle = godsaber:FindFirstChild("handle")
+            local godsord = godsaber:FindFirstChild("sord")
+            local godBlade = godsaber:FindFirstChild("Blade")
+            local godMain = godBlade:FindFirstChild("Main")
+
+            if character:FindFirstChildOfClass("Model"):FindFirstChild("Godsaber") then
+                character:FindFirstChildOfClass("Model"):FindFirstChild("Godsaber"):Remove()
+                task.wait(0.1)
+            end
+
+            godMain.Anchored = false
+            godsord.Anchored = false
+            godhandle.Anchored = false
+            godkatanamesh.Anchored = false
+            SkinSwordClone.Parent = character:FindFirstChildOfClass("Model")
+
+            character.HumanoidRootPart.CFrame = CFrame.new(-233.710556, 123.299973, 203.648102)
+
+            godsord.CFrame = Katanamesh.CFrame
+            godhandle.CFrame = Katanamesh.CFrame + Vector3.new(0,0.6,-1.5)
+            godkatanamesh.CFrame = Katanamesh.CFrame
+            godMain.CFrame = Katanamesh.CFrame
+
+            godkatanamesh.WeldConstraint.Part1 = character:FindFirstChild("Left Leg")
+
+            task.wait(0.2)
+
+            godMain.Rotation = Vector3.new(112, 0, 90)
+            godhandle.Rotation = Vector3.new(-159, 0, 100)
+
+            Katanamesh.Transparency = 1
+
+            character:FindFirstChildOfClass("Model").sord:Remove()
+            character:FindFirstChildOfClass("Model").handle:Remove()
+            character:FindFirstChildOfClass("Model"):FindFirstChild("WhiteFlameCharges"):Remove()
+            character:FindFirstChildOfClass("Model"):FindFirstChild("Excalibur"):Remove()
+            
+            Rayfield:Notify({
+               Title = "Skin Applied",
+               Content = "God Saber equipped",
+               Duration = 2,
+            })
+        end)
+   end
+})
+
+print("Blueberry Script Loaded! 🫐")
+Rayfield:Notify({
+   Title = "Blueberry Loaded",
+   Content = "Script by Fix Code | Ready to go!",
+   Duration = 3,
+})
