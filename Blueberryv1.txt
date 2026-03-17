@@ -1,0 +1,631 @@
+local runService = game:GetService("RunService")
+local workspace = game:GetService("Workspace")
+local players = game:GetService("Players")
+local localPlayer = players.LocalPlayer
+local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+local UserInputService = game:GetService("UserInputService")
+local replicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = {
+    ParryDistance = 20,
+    UseRageParry = false,
+    StaySpawnEnabled = false,
+    BaseThreshold = 0.15,
+    VelocityScalingFast = 0.050,
+    VelocityScalingSlow = 0.1,
+}
+
+local heartbeatConnection
+local focusedBall = nil
+local ballsFolder = nil
+local parryRemote = nil
+local abilityRemote = nil
+local staySpawnConnection = nil
+
+local function onCharacterAdded(newCharacter)
+    character = newCharacter
+end
+
+localPlayer.CharacterAdded:Connect(onCharacterAdded)
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "BlueberryUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = localPlayer:WaitForChild("PlayerGui")
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 420, 0, 600)
+MainFrame.Position = UDim2.new(0, 20, 0, 20)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+MainFrame.BorderColor3 = Color3.fromRGB(0, 150, 255)
+MainFrame.BorderSizePixel = 3
+MainFrame.Parent = ScreenGui
+MainFrame.Draggable = true
+MainFrame.Active = true
+
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 10)
+Corner.Parent = MainFrame
+
+local TitleBar = Instance.new("Frame")
+TitleBar.Name = "TitleBar"
+TitleBar.Size = UDim2.new(1, 0, 0, 55)
+TitleBar.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = MainFrame
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 10)
+TitleCorner.Parent = TitleBar
+
+local TitleText = Instance.new("TextLabel")
+TitleText.Name = "TitleText"
+TitleText.Size = UDim2.new(1, -50, 0, 30)
+TitleText.Position = UDim2.new(0, 15, 0, 5)
+TitleText.BackgroundTransparency = 1
+TitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleText.TextSize = 22
+TitleText.Text = "🫐 BLUEBERRY"
+TitleText.Font = Enum.Font.GothamBold
+TitleText.TextXAlignment = Enum.TextXAlignment.Left
+TitleText.Parent = TitleBar
+
+local SubTitle = Instance.new("TextLabel")
+SubTitle.Name = "SubTitle"
+SubTitle.Size = UDim2.new(1, 0, 0, 15)
+SubTitle.Position = UDim2.new(0, 15, 0, 32)
+SubTitle.BackgroundTransparency = 1
+SubTitle.TextColor3 = Color3.fromRGB(200, 200, 200)
+SubTitle.TextSize = 11
+SubTitle.Text = "by Fix Code | Advanced Blade Ball Script"
+SubTitle.Font = Enum.Font.Gotham
+SubTitle.TextXAlignment = Enum.TextXAlignment.Left
+SubTitle.Parent = TitleBar
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Name = "CloseBtn"
+CloseBtn.Size = UDim2.new(0, 40, 0, 40)
+CloseBtn.Position = UDim2.new(1, -45, 0, 7)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.Text = "✕"
+CloseBtn.TextSize = 20
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.BorderSizePixel = 0
+CloseBtn.Parent = TitleBar
+
+local CloseBtnCorner = Instance.new("UICorner")
+CloseBtnCorner.CornerRadius = UDim.new(0, 8)
+CloseBtnCorner.Parent = CloseBtn
+
+local isUIVisible = true
+CloseBtn.MouseButton1Click:Connect(function()
+    isUIVisible = not isUIVisible
+    MainFrame.Visible = isUIVisible
+end)
+
+CloseBtn.MouseEnter:Connect(function()
+    CloseBtn.BackgroundColor3 = Color3.fromRGB(220, 80, 80)
+end)
+
+CloseBtn.MouseLeave:Connect(function()
+    CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+end)
+
+local ContentScroll = Instance.new("ScrollingFrame")
+ContentScroll.Name = "ContentScroll"
+ContentScroll.Size = UDim2.new(1, -6, 1, -61)
+ContentScroll.Position = UDim2.new(0, 3, 0, 58)
+ContentScroll.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+ContentScroll.BorderSizePixel = 0
+ContentScroll.ScrollBarThickness = 6
+ContentScroll.ScrollBarImageColor3 = Color3.fromRGB(0, 150, 255)
+ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 1200)
+ContentScroll.Parent = MainFrame
+
+local ContentCorner = Instance.new("UICorner")
+ContentCorner.CornerRadius = UDim.new(0, 8)
+ContentCorner.Parent = ContentScroll
+
+local function CreateToggle(parent, name, defaultState, callback)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, -12, 0, 38)
+    container.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    container.BorderColor3 = Color3.fromRGB(70, 70, 70)
+    container.BorderSizePixel = 1
+    container.Parent = parent
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = container
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -55, 1, 0)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.fromRGB(200, 200, 200)
+    label.TextSize = 13
+    label.Text = name
+    label.Font = Enum.Font.Gotham
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = container
+    
+    local labelPad = Instance.new("UIPadding")
+    labelPad.PaddingLeft = UDim.new(0, 12)
+    labelPad.Parent = label
+    
+    local toggleButton = Instance.new("TextButton")
+    toggleButton.Size = UDim2.new(0, 48, 0, 26)
+    toggleButton.Position = UDim2.new(1, -54, 0.5, -13)
+    toggleButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    toggleButton.Text = "OFF"
+    toggleButton.TextSize = 11
+    toggleButton.Font = Enum.Font.GothamBold
+    toggleButton.BorderSizePixel = 0
+    toggleButton.Parent = container
+    
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 5)
+    btnCorner.Parent = toggleButton
+    
+    local isActive = defaultState or false
+    
+    local function UpdateToggle(state)
+        isActive = state
+        if isActive then
+            toggleButton.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+            toggleButton.Text = "ON"
+        else
+            toggleButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+            toggleButton.Text = "OFF"
+        end
+        callback(isActive)
+    end
+    
+    toggleButton.MouseButton1Click:Connect(function()
+        UpdateToggle(not isActive)
+    end)
+    
+    toggleButton.MouseEnter:Connect(function()
+        if isActive then
+            toggleButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+        else
+            toggleButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+        end
+    end)
+    
+    toggleButton.MouseLeave:Connect(function()
+        if isActive then
+            toggleButton.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+        else
+            toggleButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+        end
+    end)
+    
+    return {button = toggleButton, getValue = function() return isActive end}
+end
+
+local function CreateSlider(parent, name, min, max, default, callback)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, -12, 0, 55)
+    container.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    container.BorderColor3 = Color3.fromRGB(70, 70, 70)
+    container.BorderSizePixel = 1
+    container.Parent = parent
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = container
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0.6, 0, 0, 20)
+    label.Position = UDim2.new(0, 10, 0, 5)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.fromRGB(200, 200, 200)
+    label.TextSize = 12
+    label.Text = name
+    label.Font = Enum.Font.Gotham
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = container
+    
+    local valueLabel = Instance.new("TextLabel")
+    valueLabel.Size = UDim2.new(0.4, -10, 0, 20)
+    valueLabel.Position = UDim2.new(0.6, 0, 0, 5)
+    valueLabel.BackgroundTransparency = 1
+    valueLabel.TextColor3 = Color3.fromRGB(0, 150, 255)
+    valueLabel.TextSize = 13
+    valueLabel.Text = tostring(math.floor(default))
+    valueLabel.Font = Enum.Font.GothamBold
+    valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+    valueLabel.Parent = container
+    
+    local sliderBg = Instance.new("Frame")
+    sliderBg.Size = UDim2.new(1, -20, 0, 8)
+    sliderBg.Position = UDim2.new(0, 10, 0, 32)
+    sliderBg.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    sliderBg.BorderColor3 = Color3.fromRGB(80, 80, 80)
+    sliderBg.BorderSizePixel = 1
+    sliderBg.Parent = container
+    
+    local sliderFill = Instance.new("Frame")
+    sliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    sliderFill.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+    sliderFill.BorderSizePixel = 0
+    sliderFill.Parent = sliderBg
+    
+    local function updateValue(value)
+        value = math.max(min, math.min(max, value))
+        valueLabel.Text = tostring(math.floor(value))
+        sliderFill.Size = UDim2.new((value - min) / (max - min), 0, 1, 0)
+        callback(value)
+    end
+    
+    local dragging = false
+    sliderBg.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+        end
+    end)
+    
+    sliderBg.InputEnded:Connect(function(input, gameProcessed)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input, gameProcessed)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local mouse = localPlayer:GetMouse()
+            local relativePos = mouse.X - sliderBg.AbsolutePosition.X
+            local percentage = math.max(0, math.min(1, relativePos / sliderBg.AbsoluteSize.X))
+            updateValue(min + (max - min) * percentage)
+        end
+    end)
+end
+
+local function CreateButton(parent, name, callback)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(1, -12, 0, 38)
+    button.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.Text = name
+    button.TextSize = 13
+    button.Font = Enum.Font.GothamBold
+    button.BorderSizePixel = 0
+    button.Parent = parent
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = button
+    
+    button.MouseButton1Click:Connect(callback)
+    
+    button.MouseEnter:Connect(function()
+        button.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+    end)
+    
+    button.MouseLeave:Connect(function()
+        button.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+    end)
+end
+
+local function startAutoParry()
+    ballsFolder = workspace:FindFirstChild("Balls")
+    
+    if not ballsFolder then
+        print("Balls folder not found!")
+        return
+    end
+    
+    parryRemote = replicatedStorage:FindFirstChild("Remotes") and replicatedStorage.Remotes:FindFirstChild("ParryButtonPress")
+    abilityRemote = replicatedStorage:FindFirstChild("Remotes") and replicatedStorage.Remotes:FindFirstChild("AbilityButtonPress")
+
+    if not parryRemote then
+        print("ParryButtonPress remote not found!")
+        return
+    end
+
+    print("Auto Parry started!")
+
+    local function chooseNewFocusedBall()
+        local balls = ballsFolder:GetChildren()
+        local closestBall = nil
+        local closestDistance = math.huge
+        
+        for _, ball in ipairs(balls) do
+            pcall(function()
+                if ball:IsA("BasePart") then
+                    local isRealBall = ball:GetAttribute("realBall")
+                    
+                    if isRealBall == true then
+                        local distance = (ball.Position - character.HumanoidRootPart.Position).Magnitude
+                        if distance < closestDistance then
+                            closestBall = ball
+                            closestDistance = distance
+                        end
+                    end
+                end
+            end)
+        end
+        
+        focusedBall = closestBall
+    end
+
+    local function getDynamicThreshold(ballVelocityMagnitude)
+        if ballVelocityMagnitude > 60 then
+            return math.max(0.20, Config.BaseThreshold - (ballVelocityMagnitude * Config.VelocityScalingFast))
+        else
+            return math.min(0.01, Config.BaseThreshold + (ballVelocityMagnitude * Config.VelocityScalingSlow))
+        end
+    end
+
+    local function timeUntilImpact(ballVelocity, distanceToPlayer, playerVelocity)
+        if not focusedBall then return math.huge end
+        
+        local directionToPlayer = (character.HumanoidRootPart.Position - focusedBall.Position).Unit
+        local velocityTowardsPlayer = ballVelocity:Dot(directionToPlayer) - playerVelocity:Dot(directionToPlayer)
+        
+        if velocityTowardsPlayer <= 0 then
+            return math.huge
+        end
+        
+        return (distanceToPlayer - Config.ParryDistance) / velocityTowardsPlayer
+    end
+
+    local function checkBallDistance()
+        pcall(function()
+            if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+
+            local charPos = character.HumanoidRootPart.Position
+            local charVel = character.HumanoidRootPart.Velocity
+
+            if focusedBall and (not focusedBall.Parent or not focusedBall:IsDescendantOf(workspace)) then
+                chooseNewFocusedBall()
+            end
+            
+            if not focusedBall then 
+                chooseNewFocusedBall()
+            end
+
+            local ball = focusedBall
+            if not ball or not ball.Parent then return end
+            
+            local distanceToPlayer = (ball.Position - charPos).Magnitude
+            local ballVelocityTowardsPlayer = ball.Velocity:Dot((charPos - ball.Position).Unit)
+            
+            if distanceToPlayer < 10 then
+                parryRemote:Fire()
+                return
+            end
+
+            if timeUntilImpact(ball.Velocity, distanceToPlayer, charVel) < getDynamicThreshold(ballVelocityTowardsPlayer) then
+                parryRemote:Fire()
+            end
+        end)
+    end
+
+    if heartbeatConnection then
+        heartbeatConnection:Disconnect()
+    end
+    
+    heartbeatConnection = runService.Heartbeat:Connect(function()
+        checkBallDistance()
+    end)
+end
+
+local function stopAutoParry()
+    if heartbeatConnection then
+        heartbeatConnection:Disconnect()
+        heartbeatConnection = nil
+    end
+end
+
+local function startStaySpawn()
+    if staySpawnConnection then
+        staySpawnConnection:Disconnect()
+    end
+    
+    staySpawnConnection = runService.Heartbeat:Connect(function()
+        if Config.StaySpawnEnabled and character then
+            pcall(function()
+                character.Parent = workspace.Alive
+            end)
+        end
+    end)
+end
+
+local function stopStaySpawn()
+    if staySpawnConnection then
+        staySpawnConnection:Disconnect()
+        staySpawnConnection = nil
+    end
+end
+
+local yPos = 0
+
+CreateToggle(ContentScroll, "Auto Parry", false, function(value)
+    if value then
+        startAutoParry()
+    else
+        stopAutoParry()
+    end
+end)
+yPos = yPos + 44
+
+CreateSlider(ContentScroll, "Parry Distance", 0, 100, 20, function(value)
+    Config.ParryDistance = value
+end)
+yPos = yPos + 59
+
+CreateToggle(ContentScroll, "Auto Rage Parry", false, function(value)
+    Config.UseRageParry = value
+end)
+yPos = yPos + 44
+
+CreateToggle(ContentScroll, "Half Legit Stay Spawn", false, function(value)
+    Config.StaySpawnEnabled = value
+    if value then
+        startStaySpawn()
+    else
+        stopStaySpawn()
+    end
+end)
+yPos = yPos + 44
+
+CreateButton(ContentScroll, "Empyrean Greatblade", function()
+    pcall(function()
+        local Empyreansword = replicatedStorage.Misc.Swords.Limited["Empyrean Greatblade"]
+        local SkinSwordClone = Empyreansword:FindFirstChild("Meshes/Sword"):Clone()
+        local Katanamesh = character:FindFirstChildOfClass("Model"):FindFirstChild("KatanaMesh")
+
+        SkinSwordClone.Anchored = false
+        SkinSwordClone.Parent = character:FindFirstChildOfClass("Model")
+        SkinSwordClone.CFrame = Katanamesh.CFrame
+        
+        local weldthing = Instance.new("Weld")
+        weldthing.Parent = SkinSwordClone
+        weldthing.Part0 = SkinSwordClone
+        weldthing.Part1 = Katanamesh
+        Katanamesh.Transparency = 1
+
+        character.HumanoidRootPart.CFrame = CFrame.new(-233.710556, 123.299973, 203.648102)
+        task.wait(0.1)
+        SkinSwordClone.Rotation = Vector3.new(-75.41799926757812, -90, 0)
+    end)
+end)
+yPos = yPos + 44
+
+CreateButton(ContentScroll, "Oni Claws", function()
+    pcall(function()
+        local claws = replicatedStorage.Misc.Swords.Limited["Oni Claws"]:Clone()
+        local Katanamesh = character:FindFirstChildOfClass("Model"):FindFirstChild("KatanaMesh")
+        local sword = character:FindFirstChildOfClass("Model")
+
+        local Glove = claws
+        local Cestus1 = Glove:FindFirstChild("Cestus")
+        local Cestus2 = Glove:FindFirstChild("Cestus2")
+
+        Glove.Parent = sword
+        
+        local leftarm = Instance.new("Weld")
+        leftarm.Name = "Left Arm"
+        leftarm.Parent = Cestus1
+        leftarm.Part0 = Cestus1.zaza
+        leftarm.Part1 = character:FindFirstChild("Left Arm")
+
+        local rightarm = Instance.new("Weld")
+        rightarm.Name = "Right Arm"
+        rightarm.Parent = Cestus2
+        rightarm.Part0 = Cestus2.zaza
+        rightarm.Part1 = character:FindFirstChild("Right Arm")
+        
+        Katanamesh.Transparency = 1
+
+        character:FindFirstChildOfClass("Model").sord:Remove()
+        character:FindFirstChildOfClass("Model").handle:Remove()
+        character:FindFirstChildOfClass("Model"):FindFirstChild("WhiteFlameCharges"):Remove()
+        character:FindFirstChildOfClass("Model"):FindFirstChild("Excalibur"):Remove()
+    end)
+end)
+yPos = yPos + 44
+
+CreateButton(ContentScroll, "Double Oni Claws", function()
+    pcall(function()
+        local claws = replicatedStorage.Misc.Swords.Limited["Oni Claws"]:Clone()
+        local claws2 = replicatedStorage.Misc.Swords.Limited["Oni Claws"]:Clone()
+        local Katanamesh = character:FindFirstChildOfClass("Model"):FindFirstChild("KatanaMesh")
+        local sword = character:FindFirstChildOfClass("Model")
+
+        local Glove = claws
+        local Glove2 = claws2
+        local Cestus1 = Glove:FindFirstChild("Cestus")
+        local Cestus2 = Glove:FindFirstChild("Cestus2")
+        local Cestus1_2 = Glove2:FindFirstChild("Cestus")
+        local Cestus2_2 = Glove2:FindFirstChild("Cestus2")
+
+        Glove.Parent = sword
+        local leftarm = Instance.new("Weld")
+        leftarm.Name = "Left Arm"
+        leftarm.Parent = Cestus1
+        leftarm.Part0 = Cestus1.zaza
+        leftarm.Part1 = character:FindFirstChild("Left Arm")
+
+        local rightarm = Instance.new("Weld")
+        rightarm.Name = "Right Arm"
+        rightarm.Parent = Cestus2
+        rightarm.Part0 = Cestus2.zaza
+        rightarm.Part1 = character:FindFirstChild("Right Arm")
+
+        Glove2.Parent = sword
+        local lfetarm = Instance.new("Weld")
+        lfetarm.Name = "Lfet Arm"
+        lfetarm.Parent = Cestus2_2
+        lfetarm.Part0 = Cestus2_2.zaza
+        lfetarm.Part1 = character:FindFirstChild("Left Arm")
+
+        local rarm = Instance.new("Weld")
+        rarm.Name = "Rgiht Arm"
+        rarm.Parent = Cestus1_2
+        rarm.Part0 = Cestus1_2.zaza
+        rarm.Part1 = character:FindFirstChild("Right Arm")
+
+        Katanamesh.Transparency = 1
+
+        character:FindFirstChildOfClass("Model").sord:Remove()
+        character:FindFirstChildOfClass("Model").handle:Remove()
+        character:FindFirstChildOfClass("Model"):FindFirstChild("WhiteFlameCharges"):Remove()
+        character:FindFirstChildOfClass("Model"):FindFirstChild("Excalibur"):Remove()
+    end)
+end)
+yPos = yPos + 44
+
+CreateButton(ContentScroll, "God Saber", function()
+    pcall(function()
+        local Katanamesh = character:FindFirstChildOfClass("Model"):FindFirstChild("KatanaMesh")
+        local godsaber = replicatedStorage.Misc.Swords.Unique.Godsaber
+
+        local SkinSwordClone = godsaber:Clone()
+        local godkatanamesh = godsaber:FindFirstChild("KatanaMesh")
+        local godhandle = godsaber:FindFirstChild("handle")
+        local godsord = godsaber:FindFirstChild("sord")
+        local godBlade = godsaber:FindFirstChild("Blade")
+        local godMain = godBlade:FindFirstChild("Main")
+
+        if character:FindFirstChildOfClass("Model"):FindFirstChild("Godsaber") then
+            character:FindFirstChildOfClass("Model"):FindFirstChild("Godsaber"):Remove()
+            task.wait(0.1)
+        end
+
+        godMain.Anchored = false
+        godsord.Anchored = false
+        godhandle.Anchored = false
+        godkatanamesh.Anchored = false
+        SkinSwordClone.Parent = character:FindFirstChildOfClass("Model")
+
+        character.HumanoidRootPart.CFrame = CFrame.new(-233.710556, 123.299973, 203.648102)
+
+        godsord.CFrame = Katanamesh.CFrame
+        godhandle.CFrame = Katanamesh.CFrame + Vector3.new(0,0.6,-1.5)
+        godkatanamesh.CFrame = Katanamesh.CFrame
+        godMain.CFrame = Katanamesh.CFrame
+
+        godkatanamesh.WeldConstraint.Part1 = character:FindFirstChild("Left Leg")
+
+        task.wait(0.2)
+
+        godMain.Rotation = Vector3.new(112, 0, 90)
+        godhandle.Rotation = Vector3.new(-159, 0, 100)
+
+        Katanamesh.Transparency = 1
+
+        character:FindFirstChildOfClass("Model").sord:Remove()
+        character:FindFirstChildOfClass("Model").handle:Remove()
+        character:FindFirstChildOfClass("Model"):FindFirstChild("WhiteFlameCharges"):Remove()
+        character:FindFirstChildOfClass("Model"):FindFirstChild("Excalibur"):Remove()
+    end)
+end)
+
+print("Blueberry Script Loaded!")
