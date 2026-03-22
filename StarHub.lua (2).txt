@@ -1,0 +1,263 @@
+if not game:IsLoaded() then game.Loaded:Wait() end
+task.wait(3)
+
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local lp = Players.LocalPlayer
+
+local Remotes    = RS:WaitForChild("Remotes", 30):WaitForChild("Server", 30):WaitForChild("Data", 30)
+local SpinRemote = Remotes:WaitForChild("InnateSpin", 30)
+local CodeRemote = Remotes:WaitForChild("RedeemCode", 30)
+local ResetRemote = nil
+
+local Innates = {
+    "None",
+    "Infinity",
+    "Star Rage",
+    "Demon Vessel",
+    "Curse Queen",
+    "Soul Manipulation",
+    "Gambler Fever",
+    "Ancient Construction",
+    "Thunder God",
+}
+
+local Codes = {
+    "LUNAR_FAREWELL","300K_SUBS","200K_SUBS","100K_SUBS","1M_MEMBERS","LUNAR_2026",
+    "LUNAR_SOON","WINTER_END","1M_LIKES","96_PERCENT","2M_FAVS","SHOWDOWN_SORRY!",
+    "WINTER_EVENT_OUT","WINTER_SOON","SOUL_KING_OUT","HAPPY_2026","95_PERCENT",
+    "EXCHANGE_50","EXCHANGE_OUT","20KWINTER","2025_CHRISTMAS","SOULKING_20K",
+    "EXCHANGE_20K","EXCHANGE_SOON","ITS_DECEMBER","HAPPY_THANKSGIVING","NOVEMBER_YAY",
+    "HALLOW_SHUTDOWN","HALLOWED_20K","HAPPY_HALLOWEEN","HALLOWEEN_SOON","HAPPY_OCTOBER",
+    "HELLO_FRIENDS","JJI_AWESOME","PLANT_MANIP_20K","PLANT_MANIP_OUT","PLANT_SOON",
+    "SKILLS_SORRY","SOUL_REWORK_OUT","SOUL_20K","SOUL_SOON_REWORK","PROJECTION_OUT",
+    "PROJECTION_20K","PROJECTION_SOON","THUNDER_GOD","20K_FOLLOW_THUNDR","THUNDER_SOON",
+    "MECH_SHUTDOWN","MECH_MAX","MECH_SOON","ANCIENT_CONSTRUCT","ANCIENT_SOON",
+    "REND_SPIDERWEB","SIX_EYED_CALAMITY","CALAMITY_SOON","PATCH_SHUTDOWN","COOL_SHUTDOWN",
+    "CALAMITY_TEASER","QUEUE_FIX","SMALL_PATCHES","SOUL_SHUTDOWN","SOUL_BUFFS",
+    "HAPPY_VALENTINES","FUGA_SHUTDOWN","FUGA_PUPPET_UPD","READY_FOR_UPD","I_LOVE_JJI",
+    "LUNAR_SNAKE","LUNAR_NEW_YEAR","LUNAR_FOLLOWS","I_LOVE_SHUTDOWNS",
+    "WORLD_TRADING_UPDATE","WINTER_UPD",
+}
+
+local State = {
+    TargetBag1 = "None",
+    TargetBag2 = "None",
+    SpinCount  = 0,
+    ResetCount = 0,
+    CycleCount = 0,
+}
+
+local cycleRunning = false
+
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "Star Hub",
+    Icon = 0,
+    LoadingTitle = "Star Hub",
+    LoadingSubtitle = "Jujutsu Infinity",
+    Theme = "Default",
+    DisableRayfieldPrompts = false,
+    DisableBuildWarnings = false,
+    ConfigurationSaving = {
+        Enabled = false,
+    },
+    Discord = {
+        Enabled = false,
+    },
+    KeySystem = false,
+})
+
+local SpinTab   = Window:CreateTab("Spin", 4483362458)
+local CodesTab  = Window:CreateTab("Codes", 4483362458)
+local InfoTab   = Window:CreateTab("Info", 4483362458)
+
+local function doSpin(bag)
+    local s = pcall(function() SpinRemote:InvokeServer(bag) end)
+    if s then State.SpinCount = State.SpinCount + 1 end
+    return s
+end
+
+local function doReset()
+    if not ResetRemote then return false end
+    local s = pcall(function() ResetRemote:InvokeServer() end)
+    if s then State.ResetCount = State.ResetCount + 1 end
+    return s
+end
+
+local function redeemAllCodes(notifCb)
+    local ok, fail = 0, 0
+    for _, code in ipairs(Codes) do
+        local s = pcall(function() CodeRemote:InvokeServer(code) end)
+        if s then ok = ok + 1 else fail = fail + 1 end
+        if notifCb then notifCb(code, ok, fail) end
+        task.wait(0.3)
+    end
+    return ok, fail
+end
+
+SpinTab:CreateSection("Auto Cycle")
+
+local CycleStatusLabel = SpinTab:CreateLabel("Status: Idle")
+local StatsLabel       = SpinTab:CreateLabel("Spins: 0  |  Resets: 0  |  Cycles: 0")
+
+local function updateStats()
+    StatsLabel:Set("Spins: " .. State.SpinCount .. "  |  Resets: " .. State.ResetCount .. "  |  Cycles: " .. State.CycleCount)
+end
+
+SpinTab:CreateDropdown({
+    Name = "Target Bag 1",
+    Options = Innates,
+    CurrentOption = {"None"},
+    MultipleOptions = false,
+    Flag = "Bag1",
+    Callback = function(v)
+        State.TargetBag1 = v[1] or "None"
+    end,
+})
+
+SpinTab:CreateDropdown({
+    Name = "Target Bag 2",
+    Options = Innates,
+    CurrentOption = {"None"},
+    MultipleOptions = false,
+    Flag = "Bag2",
+    Callback = function(v)
+        State.TargetBag2 = v[1] or "None"
+    end,
+})
+
+SpinTab:CreateToggle({
+    Name = "Auto Cycle",
+    CurrentValue = false,
+    Flag = "AutoCycle",
+    Callback = function(val)
+        cycleRunning = val
+        if val then
+            CycleStatusLabel:Set("Status: Running...")
+            task.spawn(function()
+                while cycleRunning do
+                    CycleStatusLabel:Set("Redeeming codes...")
+                    redeemAllCodes(nil)
+                    task.wait(1)
+
+                    CycleStatusLabel:Set("Spinning Bag 1...")
+                    for _ = 1, 200 do
+                        if not cycleRunning then break end
+                        doSpin(1)
+                        updateStats()
+                        task.wait(0.08)
+                    end
+
+                    CycleStatusLabel:Set("Spinning Bag 2...")
+                    for _ = 1, 200 do
+                        if not cycleRunning then break end
+                        doSpin(2)
+                        updateStats()
+                        task.wait(0.08)
+                    end
+
+                    CycleStatusLabel:Set("Resetting...")
+                    doReset()
+                    State.CycleCount = State.CycleCount + 1
+                    updateStats()
+                    task.wait(2)
+                end
+                CycleStatusLabel:Set("Status: Stopped")
+            end)
+        else
+            CycleStatusLabel:Set("Status: Stopped")
+        end
+    end,
+})
+
+SpinTab:CreateSection("Manual")
+
+SpinTab:CreateButton({
+    Name = "Spin Bag 1",
+    Callback = function()
+        doSpin(1)
+        updateStats()
+        Rayfield:Notify({
+            Title = "Star Hub",
+            Content = "Bag 1 spun!  Total: " .. State.SpinCount,
+            Duration = 2,
+        })
+    end,
+})
+
+SpinTab:CreateButton({
+    Name = "Spin Bag 2",
+    Callback = function()
+        doSpin(2)
+        updateStats()
+        Rayfield:Notify({
+            Title = "Star Hub",
+            Content = "Bag 2 spun!  Total: " .. State.SpinCount,
+            Duration = 2,
+        })
+    end,
+})
+
+SpinTab:CreateButton({
+    Name = "Reset Data",
+    Callback = function()
+        if not ResetRemote then
+            Rayfield:Notify({
+                Title = "Star Hub",
+                Content = "ResetRemote not set!",
+                Duration = 3,
+            })
+            return
+        end
+        doReset()
+        updateStats()
+        Rayfield:Notify({
+            Title = "Star Hub",
+            Content = "Data reset!",
+            Duration = 2,
+        })
+    end,
+})
+
+CodesTab:CreateSection("Redeem Codes")
+
+local CodeStatusLabel = CodesTab:CreateLabel("Press button to redeem all codes")
+
+CodesTab:CreateButton({
+    Name = "Redeem All Codes  (" .. #Codes .. " codes)",
+    Callback = function()
+        CodeStatusLabel:Set("Redeeming...")
+        task.spawn(function()
+            local ok, fail = redeemAllCodes(function(code, o, f)
+                CodeStatusLabel:Set(code .. "  [" .. (o+f) .. "/" .. #Codes .. "]")
+            end)
+            CodeStatusLabel:Set("Done!  OK: " .. ok .. "  Failed: " .. fail)
+            Rayfield:Notify({
+                Title = "Codes Done",
+                Content = "Success: " .. ok .. "  |  Failed: " .. fail,
+                Duration = 4,
+            })
+        end)
+    end,
+})
+
+InfoTab:CreateSection("Techniques")
+
+for i, name in ipairs(Innates) do
+    if name ~= "None" then
+        InfoTab:CreateLabel("#" .. (i-1) .. "  " .. name)
+    end
+end
+
+InfoTab:CreateSection("Controls")
+InfoTab:CreateLabel("RightShift - Hide/Show")
+InfoTab:CreateLabel("Auto Cycle uses ResetRemote")
+InfoTab:CreateLabel("Set ResetRemote when found")
+
+Rayfield:Notify({
+    Title = "Star Hub",
+    Content = "Loaded! Jujutsu Infinity",
+    Duration = 4,
+})
