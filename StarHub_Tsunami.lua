@@ -27,7 +27,7 @@ local AutoFarmEnabled   = false
 local AutoPhantomEnabled= false
 local AntiDetectEnabled = false
 local FlySpeed          = 50
-local FarmDelay         = 0.8
+local FarmDelay         = 1.4
 local FarmCount         = 0
 local PhantomCount      = 0
 local nowe              = false
@@ -668,33 +668,88 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 		AddLog("AutoFarm ON")
 
 		local GodConn = nil
+		local GodDiedConn = nil
+		local GodHealthConn = nil
+
+		local function ProtectHumanoid(hum)
+			pcall(function()
+				hum.MaxHealth = math.huge
+				hum.Health    = math.huge
+			end)
+			pcall(function()
+				sethiddenproperty(hum, "Health", math.huge)
+				sethiddenproperty(hum, "MaxHealth", math.huge)
+			end)
+			pcall(function()
+				local mt = getrawmetatable(hum)
+				local old_index = mt.__newindex
+				setreadonly(mt, false)
+				mt.__newindex = function(t, k, v)
+					if k == "Health" or k == "MaxHealth" then
+						return old_index(t, k, math.huge)
+					end
+					return old_index(t, k, v)
+				end
+				setreadonly(mt, true)
+			end)
+			if GodHealthConn then GodHealthConn:Disconnect() end
+			GodHealthConn = hum.HealthChanged:Connect(function(hp)
+				if not AutoFarmEnabled then return end
+				task.defer(function()
+					if hum and hum.Parent then
+						pcall(function()
+							hum.MaxHealth = math.huge
+							hum.Health    = math.huge
+						end)
+					end
+				end)
+			end)
+			if GodDiedConn then GodDiedConn:Disconnect() end
+			GodDiedConn = hum.Died:Connect(function()
+				if not AutoFarmEnabled then return end
+				task.wait(0.05)
+				local chr2 = LocalPlayer.Character
+				local hum2 = chr2 and chr2:FindFirstChildOfClass("Humanoid")
+				if hum2 then
+					pcall(function()
+						hum2.MaxHealth = math.huge
+						hum2.Health    = math.huge
+					end)
+					ProtectHumanoid(hum2)
+				end
+			end)
+			for _, st in ipairs({
+				Enum.HumanoidStateType.Dead,
+				Enum.HumanoidStateType.FallingDown,
+			}) do
+				pcall(function() hum:SetStateEnabled(st, false) end)
+			end
+		end
+
 		local function EnableServerGodMode()
 			local chr=LocalPlayer.Character
 			if not chr then return end
 			local hum=chr:FindFirstChildOfClass("Humanoid")
 			if not hum then return end
-			pcall(function()
-				hum.MaxHealth = math.huge
-				hum.Health    = math.huge
-			end)
+			ProtectHumanoid(hum)
 			if GodConn then GodConn:Disconnect() end
 			GodConn = RunService.Heartbeat:Connect(function()
 				if not AutoFarmEnabled then
 					if GodConn then GodConn:Disconnect() GodConn=nil end
+					if GodHealthConn then GodHealthConn:Disconnect() GodHealthConn=nil end
+					if GodDiedConn then GodDiedConn:Disconnect() GodDiedConn=nil end
 					return
 				end
-				local c=LocalPlayer.Character
-				local h=c and c:FindFirstChildOfClass("Humanoid")
+				local c = LocalPlayer.Character
+				local h = c and c:FindFirstChildOfClass("Humanoid")
 				if h then
-					if h.Health < h.MaxHealth * 0.999 then
-						pcall(function()
-							h.MaxHealth = math.huge
-							h.Health    = math.huge
-						end)
-					end
+					pcall(function()
+						if h.MaxHealth ~= math.huge then h.MaxHealth = math.huge end
+						if h.Health    ~= math.huge then h.Health    = math.huge end
+					end)
 				end
 			end)
-			AddLog("Server GodMode ON")
+			AddLog("Server GodMode ON ∞ HP")
 		end
 
 		task.spawn(function()
@@ -743,24 +798,85 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 						if not AutoFarmEnabled then break end
 						local hrp2 = GetHRP()
 						if hrp2 then
-							local targetPos = Vector3.new(target.pos.X, SAFE_Y, target.pos.Z)
-							local startPos = hrp2.Position
-							local dist = (Vector3.new(targetPos.X, 0, targetPos.Z) - Vector3.new(startPos.X, 0, startPos.Z)).Magnitude
-							local flySteps = math.max(4, math.floor(dist * 0.23))
-							for i = 1, flySteps do
-								if not AutoFarmEnabled then break end
-								hrp2 = GetHRP() if not hrp2 then break end
-								local alpha = i / flySteps
-								local newPos = Vector3.new(
-									startPos.X + (targetPos.X - startPos.X) * alpha,
-									SAFE_Y,
-									startPos.Z + (targetPos.Z - startPos.Z) * alpha
-								)
-								hrp2.CFrame = CFrame.new(newPos)
-								local bp2=hrp2:FindFirstChild("FarmBodyLock")
-								if bp2 then bp2.Position=newPos end
-								task.wait(0.005)
+
+							local function FlyTo(hrp, toPos)
+								local sPos = hrp.Position
+								local dist2d = (Vector3.new(toPos.X,0,toPos.Z)-Vector3.new(sPos.X,0,sPos.Z)).Magnitude
+								local steps = math.max(4, math.floor(dist2d * 0.26))
+								local stepTimer = 0
+								local pauseInterval = 0.08 + math.random(0,4)/100
+								for i = 1, steps do
+									if not AutoFarmEnabled then return false end
+									hrp = GetHRP() if not hrp then return false end
+									local a = i/steps
+									local np = Vector3.new(
+										sPos.X+(toPos.X-sPos.X)*a,
+										SAFE_Y,
+										sPos.Z+(toPos.Z-sPos.Z)*a
+									)
+									hrp.CFrame = CFrame.new(np)
+									local bp=hrp:FindFirstChild("FarmBodyLock")
+									if bp then bp.Position=np end
+									local stepTime = 0.006 + math.random(0,2)/1000
+									stepTimer = stepTimer + stepTime
+									if stepTimer >= pauseInterval then
+										stepTimer = 0
+										pauseInterval = 0.08 + math.random(0,4)/100
+										task.wait(0.03 + math.random(0,2)/100)
+									else
+										task.wait(stepTime)
+									end
+								end
+								return true
 							end
+
+							local function GoHome()
+								local h=GetHRP() if not h then return end
+								FlyTo(h, Vector3.new(HOME_X, SAFE_Y, HOME_Z))
+							end
+
+							local targetPos = Vector3.new(target.pos.X, SAFE_Y, target.pos.Z)
+							local arrived = FlyTo(hrp2, targetPos)
+
+							if not arrived then
+								GoHome()
+								break
+							end
+
+							if not target.obj or not target.obj.Parent then
+								AddLog(target.rarity.." пропал → ищу другого")
+								local fresh = GetActiveBrainrots()
+								local found = false
+								for _,fb in ipairs(fresh) do
+									if fb.rarity == target.rarity and fb.obj and fb.obj.Parent then
+										hrp2 = GetHRP()
+										if hrp2 then
+											FlyTo(hrp2, Vector3.new(fb.pos.X, SAFE_Y, fb.pos.Z))
+											task.wait(0.15)
+											local p2 = fb.prompt
+											if not p2 or not p2.Parent then
+												for _,v in ipairs(fb.obj:GetDescendants()) do
+													if v:IsA("ProximityPrompt") then p2=v break end
+												end
+											end
+											if p2 and p2.Parent then
+												FirePrompt(p2)
+												AddLog("Взял замену "..fb.rarity)
+												FarmCount+=1 FarmCountVal.Text=tostring(FarmCount)
+											end
+										end
+										found = true
+										break
+									end
+								end
+								if not found then AddLog("Замена не найдена → домой") end
+								GoHome()
+								local delay2 = FarmDelay
+								if AntiDetectEnabled then delay2=math.max(1.0,delay2+(delay2*math.random(-10,10)/100)) end
+								task.wait(delay2)
+								continue
+							end
+
 							task.wait(0.15)
 							local prompt = target.prompt
 							if not prompt or not prompt.Parent then
@@ -768,39 +884,31 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 									if v:IsA("ProximityPrompt") then prompt=v break end
 								end
 							end
+							local taken = false
 							if prompt and prompt.Parent then
 								FirePrompt(prompt)
-								AddLog("Взял "..target.rarity)
-							end
-							task.wait(0.6)
-							hrp2 = GetHRP()
-							if hrp2 then
-								local homePos = Vector3.new(HOME_X, SAFE_Y, HOME_Z)
-								local fromPos = hrp2.Position
-								local homeDist = (Vector3.new(homePos.X,0,homePos.Z) - Vector3.new(fromPos.X,0,fromPos.Z)).Magnitude
-								local homeSteps = math.max(4, math.floor(homeDist * 0.23))
-								for i = 1, homeSteps do
-									if not AutoFarmEnabled then break end
-									hrp2 = GetHRP() if not hrp2 then break end
-									local alpha = i / homeSteps
-									local newPos2 = Vector3.new(
-										fromPos.X + (homePos.X - fromPos.X) * alpha,
-										SAFE_Y,
-										fromPos.Z + (homePos.Z - fromPos.Z) * alpha
-									)
-									hrp2.CFrame = CFrame.new(newPos2)
-									local bp3=hrp2:FindFirstChild("FarmBodyLock")
-									if bp3 then bp3.Position=newPos2 end
-									task.wait(0.015)
+								task.wait(0.3)
+								if not target.obj.Parent then
+									taken = true
+								elseif prompt and not prompt.Parent then
+									taken = true
+								else
+									taken = true
 								end
 							end
-							task.wait(0.3)
-							FarmCount += 1
-							FarmCountVal.Text = tostring(FarmCount)
+							if taken then
+								task.wait(0.4 + math.random(0,3)/10)
+								GoHome()
+								task.wait(0.15 + math.random(0,2)/10)
+								FarmCount += 1
+								FarmCountVal.Text = tostring(FarmCount)
+							else
+								task.wait(0.2)
+							end
 						end
-						local delay = FarmDelay
+						local delay = FarmDelay + math.random(0,3)/10
 						if AntiDetectEnabled then
-							delay = math.max(1.0, delay+(delay*math.random(-10,10)/100))
+							delay = math.max(0.8, delay*(0.88 + math.random(0,24)/100))
 						end
 						task.wait(delay)
 					end
@@ -835,6 +943,8 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 				if bg then bg:Destroy() end
 			end
 		end
+		if GodHealthConn then pcall(function() GodHealthConn:Disconnect() end) end
+		if GodDiedConn   then pcall(function() GodDiedConn:Disconnect() end) end
 		AddLog("Server GodMode OFF")
 	end
 end)
