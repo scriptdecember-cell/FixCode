@@ -9,7 +9,7 @@ local SCRIPT_VERSION = "1.0.0"
 local RELEASE_DATE   = "22.03.2025"
 local HOME_X         = 133.15
 local HOME_Z         = 0.08
-local SAFE_Y         = -1.25
+local SAFE_Y         = -1.16
 
 pcall(function() setthrottleenabled(false) end)
 pcall(function() sethiddenproperty(game, "ThrottleEnabled", false) end)
@@ -23,13 +23,14 @@ local UpgradeSpeedRF = ReplicatedStorage
 	:WaitForChild("RemoteFunctions"):WaitForChild("UpgradeSpeed")
 
 local FlyEnabled        = false
+local SpeedGodEnabled   = false
+local SpeedGodValue     = 50
 local AutoFarmEnabled   = false
-local AutoPhantomEnabled= false
 local AntiDetectEnabled = false
 local FlySpeed          = 50
 local FarmDelay         = 1.4
+local CarryCount        = 1
 local FarmCount         = 0
-local PhantomCount      = 0
 local nowe              = false
 local tpwalking         = false
 local isFarming         = false
@@ -56,13 +57,11 @@ local L = {
 		main="Main", farm="Farm", info="Info", close="✕ Close",
 		fly="Fly", flyDesc="Fly freely with WASD",
 		flySpeed="Fly Speed", vertical="Vertical",
-		autoFarm="Auto Farm", autoFarmDesc="Safe farm at Y=-1.10, then collect",
-		autoPhantom="Auto Phantom", autoPhantomDesc="Collect phantom coins",
+		autoFarm="Auto Farm", autoFarmDesc="Auto collect brainrots safely",
 		antidetect="Anti-Detect", antidetectDesc="Randomize delay & jitter",
 		godmode="God Mode", godmodeDesc="Load external god mode script",
 		speedgod="Speed God", speedgodDesc="Set unlimited walk speed",
 		rarityFilter="RARITY FILTER",
-		farmed="FARMED", phantom="PHANTOM",
 		logs="LOGS", version="Version", released="Released",
 		username="Username", displayName="Display Name",
 		playerId="Player ID", accountAge="Account Age", days=" days",
@@ -72,13 +71,11 @@ local L = {
 		main="Главная", farm="Фарм", info="Инфо", close="✕ Закрыть",
 		fly="Полёт", flyDesc="Летать свободно WASD",
 		flySpeed="Скорость", vertical="Вертикаль",
-		autoFarm="Авто Фарм", autoFarmDesc="Безопасный фарм Y=-1.10",
-		autoPhantom="Авто Фантом", autoPhantomDesc="Собирать phantom coins",
+		autoFarm="Авто Фарм", autoFarmDesc="Авто сбор брейнротов",
 		antidetect="Антидетект", antidetectDesc="Рандомизация задержки",
 		godmode="Бог Мод", godmodeDesc="Загрузить внешний god mode",
 		speedgod="Скорость Бога", speedgodDesc="Установить любую скорость",
 		rarityFilter="ФИЛЬТР РАРИТИ",
-		farmed="СОБРАНО", phantom="ФАНТОМ",
 		logs="ЛОГИ", version="Версия", released="Дата выхода",
 		username="Юзернейм", displayName="Имя",
 		playerId="ID игрока", accountAge="Возраст", days=" дней",
@@ -518,9 +515,16 @@ LocalPlayer.CharacterAdded:Connect(function(chr)
 	end
 end)
 
+RunService.Heartbeat:Connect(function()
+	if not SpeedGodEnabled then return end
+	local chr=LocalPlayer.Character
+	local hum=chr and chr:FindFirstChildOfClass("Humanoid")
+	if hum and hum.WalkSpeed ~= SpeedGodValue then
+		hum.WalkSpeed = SpeedGodValue
+	end
+end)
+
 local GodModeLoaded = false
-local SpeedGodEnabled = false
-local SpeedGodValue = 50
 local godRefs = MakeToggle(MainPage,412,T("godmode"),T("godmodeDesc"),function(val)
 	if val then
 		if not GodModeLoaded then
@@ -641,7 +645,7 @@ local function SafeDropToY(targetY)
 	local hrp = GetHRP()
 	if not hrp then return end
 	EnableNoclip()
-	AddLog("Noclip ON — опускаюсь на Y="..targetY)
+	AddLog("Опускаюсь...")
 	local startY = hrp.Position.Y
 	local steps = math.max(10, math.abs(startY - targetY) * 4)
 	for i = 1, steps do
@@ -656,10 +660,10 @@ local function SafeDropToY(targetY)
 	hrp = GetHRP()
 	if hrp then hrp.CFrame = CFrame.new(hrp.Position.X, targetY, hrp.Position.Z) end
 	DisableNoclip()
-	AddLog("Noclip OFF — на Y="..targetY)
+	AddLog("Готово")
 	local pos = hrp and hrp.Position or Vector3.new(HOME_X, targetY, HOME_Z)
 	CreatePlatform(pos)
-	AddLog("Платформа создана")
+	
 end
 
 local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(val)
@@ -682,18 +686,28 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 			end)
 			pcall(function()
 				local mt = getrawmetatable(hum)
-				local old_index = mt.__newindex
+				local old_ni = mt.__newindex
 				setreadonly(mt, false)
 				mt.__newindex = function(t, k, v)
-					if k == "Health" or k == "MaxHealth" then
-						return old_index(t, k, math.huge)
+					if (k=="Health" or k=="MaxHealth") and type(v)=="number" and v < math.huge then
+						return old_ni(t, k, math.huge)
 					end
-					return old_index(t, k, v)
+					return old_ni(t, k, v)
 				end
 				setreadonly(mt, true)
 			end)
+			for _, st in ipairs({
+				Enum.HumanoidStateType.Dead,
+				Enum.HumanoidStateType.FallingDown,
+				Enum.HumanoidStateType.Ragdoll,
+			}) do
+				pcall(function() hum:SetStateEnabled(st, false) end)
+			end
+			pcall(function()
+				hum.BreakJointsOnDeath = false
+			end)
 			if GodHealthConn then GodHealthConn:Disconnect() end
-			GodHealthConn = hum.HealthChanged:Connect(function(hp)
+			GodHealthConn = hum.HealthChanged:Connect(function()
 				if not AutoFarmEnabled then return end
 				task.defer(function()
 					if hum and hum.Parent then
@@ -701,13 +715,20 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 							hum.MaxHealth = math.huge
 							hum.Health    = math.huge
 						end)
+						pcall(function()
+							sethiddenproperty(hum,"Health",math.huge)
+						end)
 					end
 				end)
 			end)
 			if GodDiedConn then GodDiedConn:Disconnect() end
 			GodDiedConn = hum.Died:Connect(function()
 				if not AutoFarmEnabled then return end
-				task.wait(0.05)
+				pcall(function()
+					hum.MaxHealth = math.huge
+					hum.Health    = math.huge
+				end)
+				task.wait(0.04)
 				local chr2 = LocalPlayer.Character
 				local hum2 = chr2 and chr2:FindFirstChildOfClass("Humanoid")
 				if hum2 then
@@ -718,12 +739,6 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 					ProtectHumanoid(hum2)
 				end
 			end)
-			for _, st in ipairs({
-				Enum.HumanoidStateType.Dead,
-				Enum.HumanoidStateType.FallingDown,
-			}) do
-				pcall(function() hum:SetStateEnabled(st, false) end)
-			end
 		end
 
 		local function EnableServerGodMode()
@@ -744,19 +759,31 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 				local h = c and c:FindFirstChildOfClass("Humanoid")
 				if h then
 					pcall(function()
-						if h.MaxHealth ~= math.huge then h.MaxHealth = math.huge end
-						if h.Health    ~= math.huge then h.Health    = math.huge end
+						if h.MaxHealth ~= math.huge then
+							h.MaxHealth = math.huge
+							sethiddenproperty(h,"MaxHealth",math.huge)
+						end
+						if h.Health ~= math.huge then
+							h.Health = math.huge
+							sethiddenproperty(h,"Health",math.huge)
+						end
 					end)
+					for _, st in ipairs({
+						Enum.HumanoidStateType.Dead,
+						Enum.HumanoidStateType.Ragdoll,
+					}) do
+						pcall(function() h:SetStateEnabled(st,false) end)
+					end
 				end
 			end)
-			AddLog("Server GodMode ON ∞ HP")
+			AddLog("Защита активна")
 		end
 
 		task.spawn(function()
 			SafeDropToY(SAFE_Y)
 			task.wait(0.5)
 			EnableServerGodMode()
-			AddLog("Y="..SAFE_Y.." — начинаю фарм")
+			AddLog("Начинаю фарм")
 			local chr0=LocalPlayer.Character
 			local hrp0=chr0 and chr0:FindFirstChild("HumanoidRootPart")
 			if hrp0 then
@@ -794,17 +821,20 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 				end
 				local brainrots=GetActiveBrainrots()
 				if #brainrots>0 then
+					local takenThisRun = 0
 					for _,target in ipairs(brainrots) do
 						if not AutoFarmEnabled then break end
+						if takenThisRun >= CarryCount then break end
 						local hrp2 = GetHRP()
 						if hrp2 then
 
 							local function FlyTo(hrp, toPos)
 								local sPos = hrp.Position
 								local dist2d = (Vector3.new(toPos.X,0,toPos.Z)-Vector3.new(sPos.X,0,sPos.Z)).Magnitude
-								local steps = math.max(4, math.floor(dist2d * 0.26))
+								local steps = math.max(5, math.floor(dist2d * 0.28))
 								local stepTimer = 0
-								local pauseInterval = 0.08 + math.random(0,4)/100
+								local pauseInterval = 0.09 + math.random(0,5)/100
+								local microStop = math.random(3,7)
 								for i = 1, steps do
 									if not AutoFarmEnabled then return false end
 									hrp = GetHRP() if not hrp then return false end
@@ -817,12 +847,16 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 									hrp.CFrame = CFrame.new(np)
 									local bp=hrp:FindFirstChild("FarmBodyLock")
 									if bp then bp.Position=np end
-									local stepTime = 0.006 + math.random(0,2)/1000
+									if i == microStop then
+										task.wait(0.05 + math.random(0,4)/100)
+										microStop = i + math.random(4,9)
+									end
+									local stepTime = 0.007 + math.random(0,3)/1000
 									stepTimer = stepTimer + stepTime
 									if stepTimer >= pauseInterval then
 										stepTimer = 0
-										pauseInterval = 0.08 + math.random(0,4)/100
-										task.wait(0.03 + math.random(0,2)/100)
+										pauseInterval = 0.09 + math.random(0,5)/100
+										task.wait(0.035 + math.random(0,3)/100)
 									else
 										task.wait(stepTime)
 									end
@@ -862,7 +896,7 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 											if p2 and p2.Parent then
 												FirePrompt(p2)
 												AddLog("Взял замену "..fb.rarity)
-												FarmCount+=1 FarmCountVal.Text=tostring(FarmCount)
+												FarmCount+=1
 											end
 										end
 										found = true
@@ -897,18 +931,18 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 								end
 							end
 							if taken then
-								task.wait(0.4 + math.random(0,3)/10)
+								task.wait(0.6 + math.random(0,4)/10)
 								GoHome()
-								task.wait(0.15 + math.random(0,2)/10)
+								task.wait(0.25 + math.random(0,3)/10)
 								FarmCount += 1
-								FarmCountVal.Text = tostring(FarmCount)
+								takenThisRun += 1
 							else
 								task.wait(0.2)
 							end
 						end
-						local delay = FarmDelay + math.random(0,3)/10
+						local delay = FarmDelay + math.random(2,8)/10
 						if AntiDetectEnabled then
-							delay = math.max(0.8, delay*(0.88 + math.random(0,24)/100))
+							delay = math.max(1.2, delay*(0.90 + math.random(0,20)/100))
 						end
 						task.wait(delay)
 					end
@@ -919,7 +953,7 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 			end
 		end)
 	else
-		AddLog("AutoFarm OFF • total="..FarmCount)
+		AddLog("AutoFarm OFF")
 		DisableNoclip()
 		DestroyPlatform()
 		local chr=LocalPlayer.Character
@@ -949,7 +983,23 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 	end
 end)
 
-local RarityCard = MakeCard(FarmPage,68,112)
+
+local CarryCard = MakeCard(FarmPage,68,62)
+MakeTxt({Size=UDim2.new(0.45,0,1,0),Position=UDim2.new(0,14,0,0),Text="Carry per run",TextColor3=Color3.fromRGB(255,255,255),TextSize=12,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},CarryCard)
+local CarryValLbl=MakeTxt({Size=UDim2.new(0.2,0,1,0),Position=UDim2.new(0.45,0,0,0),Text="1 / 6",TextColor3=Color3.fromRGB(185,185,185),TextSize=12,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=8},CarryCard)
+MakeTxt({Size=UDim2.new(0.3,0,0,14),Position=UDim2.new(0,14,0,44),Text="max 6 (Carry upgrade)",TextColor3=Color3.fromRGB(55,55,55),TextSize=9,Font=Enum.Font.Gotham,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},CarryCard)
+local CarryMinus=MakeBtn({Size=UDim2.new(0,32,0,28),Position=UDim2.new(1,-78,0.5,-14),BackgroundColor3=Color3.fromRGB(16,16,16),Text="−",TextColor3=Color3.fromRGB(200,200,200),TextSize=18,Font=Enum.Font.GothamBold,ZIndex=9},CarryCard) Corner(7,CarryMinus) Stroke(Color3.fromRGB(38,38,38),1,CarryMinus)
+local CarryPlus=MakeBtn({Size=UDim2.new(0,32,0,28),Position=UDim2.new(1,-38,0.5,-14),BackgroundColor3=Color3.fromRGB(16,16,16),Text="+",TextColor3=Color3.fromRGB(200,200,200),TextSize=18,Font=Enum.Font.GothamBold,ZIndex=9},CarryCard) Corner(7,CarryPlus) Stroke(Color3.fromRGB(38,38,38),1,CarryPlus)
+CarryMinus.MouseButton1Click:Connect(function()
+	CarryCount=math.max(1,CarryCount-1)
+	CarryValLbl.Text=CarryCount.." / 6"
+end)
+CarryPlus.MouseButton1Click:Connect(function()
+	CarryCount=math.min(6,CarryCount+1)
+	CarryValLbl.Text=CarryCount.." / 6"
+end)
+
+local RarityCard = MakeCard(FarmPage,138,112)
 MakeTxt({Size=UDim2.new(1,-28,0,13),Position=UDim2.new(0,12,0,4),Text=T("rarityFilter"),TextColor3=Color3.fromRGB(50,50,50),TextSize=9,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},RarityCard)
 local cols=4
 for i,rarity in ipairs(RARITIES) do
@@ -973,69 +1023,6 @@ for i,rarity in ipairs(RARITIES) do
 	end)
 end
 
-local phantomRefs = MakeToggle(FarmPage,188,T("autoPhantom"),T("autoPhantomDesc"),function(val)
-	AutoPhantomEnabled=val
-	AddLog(val and "Phantom ON" or "Phantom OFF • total="..PhantomCount)
-	if val then
-		task.spawn(function()
-			while AutoPhantomEnabled do
-				local ws=game:GetService("Workspace")
-				local coins={}
-				for _,obj in ipairs(ws:GetDescendants()) do
-					local n=obj.Name:lower()
-					if n:find("phantom") or n:find("phantomcoin") then
-						local pos=nil
-						pcall(function()
-							if obj:IsA("BasePart") then pos=obj.Position
-							elseif obj:IsA("Model") then
-								local p=obj:FindFirstChildWhichIsA("BasePart")
-								if p then pos=p.Position end
-							end
-						end)
-						if pos then table.insert(coins,{pos=pos}) end
-					end
-				end
-				if #coins>0 then
-					for _,c in ipairs(coins) do
-						if not AutoPhantomEnabled then break end
-						local hrp=GetHRP()
-						if hrp then
-							pcall(function() hrp.CFrame=CFrame.new(c.pos+Vector3.new(0,3,0)) end)
-							task.wait(0.1)
-							pcall(function() PlotActionRF:InvokeServer("Collect Money","{}","1") end)
-							PhantomCount+=1 PhantomCountVal.Text=tostring(PhantomCount)
-							if PhantomCount%5==0 then AddLog("Phantom x"..PhantomCount) end
-						end
-						task.wait(0.3)
-					end
-				else
-					for _,plr in ipairs(Players:GetPlayers()) do
-						if plr~=LocalPlayer and plr.Character then
-							local h2=plr.Character:FindFirstChild("HumanoidRootPart")
-							local mh=GetHRP()
-							if h2 and mh then
-								pcall(function() mh.CFrame=CFrame.new(h2.Position+Vector3.new(math.random(-3,3),2,math.random(-3,3))) end)
-								AddLog("TP → "..plr.Name) break
-							end
-						end
-					end
-					task.wait(1.5)
-				end
-			end
-		end)
-	end
-end)
-
-local halfW = math.floor((CW-6)/2)
-local StatsRow = Instance.new("Frame") StatsRow.Size=UDim2.new(1,0,0,52) StatsRow.Position=UDim2.new(0,0,0,308) StatsRow.BackgroundTransparency=1 StatsRow.BorderSizePixel=0 StatsRow.ZIndex=7 StatsRow.Parent=FarmPage
-
-local FarmCard2 = MakeCard(StatsRow,0,52) FarmCard2.Size=UDim2.new(0,halfW,0,52) FarmCard2.Position=UDim2.new(0,0,0,0)
-MakeTxt({Size=UDim2.new(1,-14,0,13),Position=UDim2.new(0,14,0,6),Text=T("farmed"),TextColor3=Color3.fromRGB(55,55,55),TextSize=9,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},FarmCard2)
-local FarmCountVal=MakeTxt({Size=UDim2.new(1,-14,0,22),Position=UDim2.new(0,14,0,24),Text="0",TextColor3=Color3.fromRGB(220,220,220),TextSize=18,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},FarmCard2)
-
-local PhCard = MakeCard(StatsRow,0,52) PhCard.Size=UDim2.new(0,halfW,0,52) PhCard.Position=UDim2.new(0,halfW+6,0,0)
-MakeTxt({Size=UDim2.new(1,-14,0,13),Position=UDim2.new(0,14,0,6),Text=T("phantom"),TextColor3=Color3.fromRGB(55,55,55),TextSize=9,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},PhCard)
-local PhantomCountVal=MakeTxt({Size=UDim2.new(1,-14,0,22),Position=UDim2.new(0,14,0,24),Text="0",TextColor3=Color3.fromRGB(220,220,220),TextSize=18,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},PhCard)
 
 local function MakeInfoGrid()
 	local entries={
@@ -1126,7 +1113,6 @@ local function SelectLang(lang)
 	CloseBtn.Text=T("close")
 	flyRefs.title.Text=T("fly") flyRefs.desc.Text=T("flyDesc")
 	farmRefs.title.Text=T("autoFarm") farmRefs.desc.Text=T("autoFarmDesc")
-	phantomRefs.title.Text=T("autoPhantom") phantomRefs.desc.Text=T("autoPhantomDesc")
 	antiRefs.title.Text=T("antidetect") antiRefs.desc.Text=T("antidetectDesc")
 	speedRefs.title.Text=T("speedgod") speedRefs.desc.Text=T("speedgodDesc")
 	godRefs.title.Text=T("godmode") godRefs.desc.Text=T("godmodeDesc")
