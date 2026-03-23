@@ -9,7 +9,7 @@ local SCRIPT_VERSION = "1.0.0"
 local RELEASE_DATE   = "22.03.2025"
 local HOME_X         = 133.15
 local HOME_Z         = 0.08
-local SAFE_Y         = -1.16
+local SAFE_Y         = -1.20
 
 pcall(function() setthrottleenabled(false) end)
 pcall(function() sethiddenproperty(game, "ThrottleEnabled", false) end)
@@ -23,6 +23,10 @@ local UpgradeSpeedRF = ReplicatedStorage
 	:WaitForChild("RemoteFunctions"):WaitForChild("UpgradeSpeed")
 
 local FlyEnabled        = false
+local AutoTrialEnabled  = false
+local TrialRarity       = "Unknown"
+local TrialNeed         = 0
+local TrialDone         = 0
 local SpeedGodEnabled   = false
 local SpeedGodValue     = 50
 local AutoFarmEnabled   = false
@@ -54,7 +58,7 @@ local RARITIES = {
 
 local L = {
 	EN = {
-		main="Main", farm="Farm", info="Info", close="✕ Close",
+		main="Main", farm="Farm", trial="Trial", info="Info", close="✕ Close",
 		fly="Fly", flyDesc="Fly freely with WASD",
 		flySpeed="Fly Speed", vertical="Vertical",
 		autoFarm="Auto Farm", autoFarmDesc="Auto collect brainrots safely",
@@ -68,7 +72,7 @@ local L = {
 		chooselang="Select Language",
 	},
 	RU = {
-		main="Главная", farm="Фарм", info="Инфо", close="✕ Закрыть",
+		main="Главная", farm="Фарм", trial="Триал", info="Инфо", close="✕ Закрыть",
 		fly="Полёт", flyDesc="Летать свободно WASD",
 		flySpeed="Скорость", vertical="Вертикаль",
 		autoFarm="Авто Фарм", autoFarmDesc="Авто сбор брейнротов",
@@ -315,7 +319,8 @@ local function MakeSideTab(txt,y,active)
 end
 local SideTabMain = MakeSideTab(T("main"),116,true)
 local SideTabFarm = MakeSideTab(T("farm"),152,false)
-local SideTabInfo = MakeSideTab(T("info"),188,false)
+local SideTabTrial = MakeSideTab(T("trial"),188,false)
+local SideTabInfo = MakeSideTab(T("info"),224,false)
 local CloseBtn = MakeBtn({
 	Size=UDim2.new(1,-16,0,26), Position=UDim2.new(0,8,1,-36),
 	BackgroundColor3=Color3.fromRGB(12,12,12), Text=T("close"),
@@ -333,6 +338,7 @@ ContentArea.ClipsDescendants=true ContentArea.ZIndex=6 ContentArea.Parent=Win
 local MainPage = Instance.new("Frame") MainPage.Size=UDim2.new(1,0,1,0) MainPage.BackgroundTransparency=1 MainPage.BorderSizePixel=0 MainPage.ZIndex=6 MainPage.Parent=ContentArea
 local FarmPage = Instance.new("Frame") FarmPage.Size=UDim2.new(1,0,1,0) FarmPage.BackgroundTransparency=1 FarmPage.BorderSizePixel=0 FarmPage.ZIndex=6 FarmPage.Visible=false FarmPage.Parent=ContentArea
 local InfoPage = Instance.new("Frame") InfoPage.Size=UDim2.new(1,0,1,0) InfoPage.BackgroundTransparency=1 InfoPage.BorderSizePixel=0 InfoPage.ZIndex=6 InfoPage.Visible=false InfoPage.Parent=ContentArea
+local TrialPage = Instance.new("Frame") TrialPage.Size=UDim2.new(1,0,1,0) TrialPage.BackgroundTransparency=1 TrialPage.BorderSizePixel=0 TrialPage.ZIndex=6 TrialPage.Visible=false TrialPage.Parent=ContentArea
 
 local LogCard = MakeCard(MainPage,0,50)
 MakeTxt({Size=UDim2.new(1,-28,0,12),Position=UDim2.new(0,12,0,4),Text=T("logs"),TextColor3=Color3.fromRGB(50,50,50),TextSize=9,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},LogCard)
@@ -841,7 +847,7 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 									local a = i/steps
 									local np = Vector3.new(
 										sPos.X+(toPos.X-sPos.X)*a,
-										SAFE_Y,
+										-1.20,
 										sPos.Z+(toPos.Z-sPos.Z)*a
 									)
 									hrp.CFrame = CFrame.new(np)
@@ -866,7 +872,14 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 
 							local function GoHome()
 								local h=GetHRP() if not h then return end
-								FlyTo(h, Vector3.new(HOME_X, SAFE_Y, HOME_Z))
+								FlyTo(h, Vector3.new(HOME_X, -1.20, HOME_Z))
+								h=GetHRP()
+								if h then
+									task.wait(0.05)
+									h.CFrame=CFrame.new(HOME_X, SAFE_Y, HOME_Z)
+									local bp=h:FindFirstChild("FarmBodyLock")
+									if bp then bp.Position=Vector3.new(HOME_X,SAFE_Y,HOME_Z) end
+								end
 							end
 
 							local targetPos = Vector3.new(target.pos.X, SAFE_Y, target.pos.Z)
@@ -875,6 +888,14 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 							if not arrived then
 								GoHome()
 								break
+							end
+
+							hrp2 = GetHRP()
+							if hrp2 then
+								hrp2.CFrame = CFrame.new(hrp2.Position.X, SAFE_Y, hrp2.Position.Z)
+								local bp = hrp2:FindFirstChild("FarmBodyLock")
+								if bp then bp.Position = hrp2.Position end
+								task.wait(0.1)
 							end
 
 							if not target.obj or not target.obj.Parent then
@@ -1024,6 +1045,330 @@ for i,rarity in ipairs(RARITIES) do
 end
 
 
+
+-- ══════════════════════════════════════════
+-- TRIAL PAGE UI + LOGIC
+-- ══════════════════════════════════════════
+local TOWER_POS = Vector3.new(4318.91, 6.95, -2.86)
+
+-- Trial knowledge: rarity -> {expected_need, reward_rarity}
+local TRIAL_INFO = {
+	Common    = { need=10, reward="Uncommon/Rare" },
+	Uncommon  = { need=10, reward="Rare/Epic" },
+	Rare      = { need=10, reward="Epic/Legendary" },
+	Epic      = { need=10, reward="Legendary/Mythical" },
+	Legendary = { need=10, reward="Mythical/Cosmic" },
+	Mythical  = { need=10, reward="Cosmic/Secret" },
+	Cosmic    = { need=10, reward="Secret/Celestial" },
+	Secret    = { need=10, reward="Celestial/Divine" },
+	Celestial = { need=10, reward="Divine/Infinity" },
+	Divine    = { need=15, reward="Infinity+" },
+	Infinity  = { need=20, reward="???" },
+}
+
+local TrialStatusCard = Instance.new("Frame")
+TrialStatusCard.Size=UDim2.new(1,0,0,54) TrialStatusCard.Position=UDim2.new(0,0,0,0)
+TrialStatusCard.BackgroundColor3=Color3.fromRGB(11,11,11) TrialStatusCard.BorderSizePixel=0
+TrialStatusCard.ZIndex=7 TrialStatusCard.Parent=TrialPage
+Corner(10,TrialStatusCard) Stroke(Color3.fromRGB(30,30,30),1,TrialStatusCard)
+MakeTxt({Size=UDim2.new(1,-14,0,12),Position=UDim2.new(0,12,0,4),Text="СТАТУС",TextColor3=Color3.fromRGB(50,50,50),TextSize=9,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},TrialStatusCard)
+local TrialStatusVal=MakeTxt({Size=UDim2.new(1,-14,0,18),Position=UDim2.new(0,12,0,22),Text="Выключен",TextColor3=Color3.fromRGB(120,120,120),TextSize=12,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},TrialStatusCard)
+
+local TrialTaskCard = Instance.new("Frame")
+TrialTaskCard.Size=UDim2.new(1,0,0,54) TrialTaskCard.Position=UDim2.new(0,0,0,62)
+TrialTaskCard.BackgroundColor3=Color3.fromRGB(11,11,11) TrialTaskCard.BorderSizePixel=0
+TrialTaskCard.ZIndex=7 TrialTaskCard.Parent=TrialPage
+Corner(10,TrialTaskCard) Stroke(Color3.fromRGB(30,30,30),1,TrialTaskCard)
+MakeTxt({Size=UDim2.new(1,-14,0,12),Position=UDim2.new(0,12,0,4),Text="ЗАДАНИЕ",TextColor3=Color3.fromRGB(50,50,50),TextSize=9,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},TrialTaskCard)
+local TrialTaskVal=MakeTxt({Size=UDim2.new(1,-14,0,18),Position=UDim2.new(0,12,0,22),Text="—",TextColor3=Color3.fromRGB(255,200,80),TextSize=12,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},TrialTaskCard)
+
+local TrialProgressCard = Instance.new("Frame")
+TrialProgressCard.Size=UDim2.new(1,0,0,54) TrialProgressCard.Position=UDim2.new(0,0,0,124)
+TrialProgressCard.BackgroundColor3=Color3.fromRGB(11,11,11) TrialProgressCard.BorderSizePixel=0
+TrialProgressCard.ZIndex=7 TrialProgressCard.Parent=TrialPage
+Corner(10,TrialProgressCard) Stroke(Color3.fromRGB(30,30,30),1,TrialProgressCard)
+MakeTxt({Size=UDim2.new(1,-14,0,12),Position=UDim2.new(0,12,0,4),Text="ПРОГРЕСС",TextColor3=Color3.fromRGB(50,50,50),TextSize=9,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},TrialProgressCard)
+local TrialProgressVal=MakeTxt({Size=UDim2.new(1,-14,0,18),Position=UDim2.new(0,12,0,22),Text="0 / 0",TextColor3=Color3.fromRGB(100,220,100),TextSize=16,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},TrialProgressCard)
+
+local trialToggleCard = Instance.new("Frame")
+trialToggleCard.Size=UDim2.new(1,0,0,60) trialToggleCard.Position=UDim2.new(0,0,0,186)
+trialToggleCard.BackgroundColor3=Color3.fromRGB(11,11,11) trialToggleCard.BorderSizePixel=0
+trialToggleCard.ZIndex=7 trialToggleCard.Parent=TrialPage
+Corner(10,trialToggleCard) Stroke(Color3.fromRGB(30,30,30),1,trialToggleCard)
+local trialTitleLbl=MakeTxt({Size=UDim2.new(1,-72,0,20),Position=UDim2.new(0,14,0,8),Text="Auto Trial",TextColor3=Color3.fromRGB(255,255,255),TextSize=13,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},trialToggleCard)
+local trialDescLbl=MakeTxt({Size=UDim2.new(1,-72,0,13),Position=UDim2.new(0,14,0,31),Text="Авто фарм триала башни",TextColor3=Color3.fromRGB(68,68,68),TextSize=10,Font=Enum.Font.Gotham,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},trialToggleCard)
+local trialTogBg=Instance.new("Frame") trialTogBg.Size=UDim2.new(0,44,0,24) trialTogBg.Position=UDim2.new(1,-54,0.5,-12) trialTogBg.BackgroundColor3=Color3.fromRGB(20,20,20) trialTogBg.BorderSizePixel=0 trialTogBg.ZIndex=9 trialTogBg.Parent=trialToggleCard Corner(12,trialTogBg) Stroke(Color3.fromRGB(46,46,46),1,trialTogBg)
+local trialTogKnob=Instance.new("Frame") trialTogKnob.Size=UDim2.new(0,18,0,18) trialTogKnob.Position=UDim2.new(0,3,0.5,-9) trialTogKnob.BackgroundColor3=Color3.fromRGB(88,88,88) trialTogKnob.BorderSizePixel=0 trialTogKnob.ZIndex=10 trialTogKnob.Parent=trialTogBg Corner(9,trialTogKnob)
+local trialTogHit=MakeBtn({Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=11},trialTogBg)
+
+local function ReadTrialTask()
+	-- Method 1: Read from top HUD GUI ("Tower Trial: Cosmic" + "0/20")
+	local rarity, done, need = nil, 0, 0
+	for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+		if player == LocalPlayer then
+			local pg = player.PlayerGui
+			for _, sg2 in ipairs(pg:GetDescendants()) do
+				if sg2:IsA("TextLabel") or sg2:IsA("TextBox") then
+					local txt = sg2.Text or ""
+					-- "Tower Trial: Cosmic"
+					local r = txt:match("Tower Trial:%s*(%a+)")
+					if r then rarity = r end
+					-- "0/20" or "5/20"
+					local d, n = txt:match("(%d+)/(%d+)")
+					if d and n then done=tonumber(d) need=tonumber(n) end
+				end
+			end
+			break
+		end
+	end
+	if rarity and need > 0 then
+		return rarity, done, need
+	end
+	-- Method 2: Read from ProximityPrompt "Need: Cosmic (0/3)"
+	for _, obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
+		if obj:IsA("ProximityPrompt") then
+			local combined = (obj.ObjectText or "")..(obj.ActionText or "")
+			local r2, d2, n2 = combined:match("Need:%s*(%a+)%s*%((%d+)/(%d+)%)")
+			if r2 then return r2, tonumber(d2), tonumber(n2) end
+		end
+	end
+	-- Method 3: If we got rarity from GUI but no count, use TRIAL_INFO fallback
+	if rarity and need == 0 then
+		local info = TRIAL_INFO and TRIAL_INFO[rarity]
+		need = info and info.need or 10
+		return rarity, done, need
+	end
+	return nil, 0, 0
+end
+
+local function IsTrialActive()
+	-- Check if "Tower Trial:" text exists in GUI
+	for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+		if player == LocalPlayer then
+			for _, obj in ipairs(player.PlayerGui:GetDescendants()) do
+				if (obj:IsA("TextLabel") or obj:IsA("TextBox")) then
+					if (obj.Text or ""):find("Tower Trial:") then
+						return true
+					end
+				end
+			end
+		end
+	end
+	return false
+end
+
+local function GetTrialProgress()
+	-- Find "X/20" counter from top HUD
+	for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+		if player == LocalPlayer then
+			for _, obj in ipairs(player.PlayerGui:GetDescendants()) do
+				if (obj:IsA("TextLabel") or obj:IsA("TextBox")) then
+					local d, n = (obj.Text or ""):match("^(%d+)/(%d+)$")
+					if d and n then return tonumber(d), tonumber(n) end
+				end
+			end
+		end
+	end
+	return 0, 0
+end
+
+local function FindStartTrialPrompt()
+	for _, obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
+		if obj:IsA("ProximityPrompt") then
+			local at = (obj.ActionText or ""):lower()
+			if at:find("start") and at:find("trial") then
+				return obj
+			end
+			if at == "start trial!" or at:find("start trial") then
+				return obj
+			end
+		end
+	end
+	return nil
+end
+
+local function FireTrialPrompt(prompt)
+	if fireproximityprompt then
+		fireproximityprompt(prompt)
+	else
+		local hd = prompt.HoldDuration
+		if hd <= 0 then hd = 0.1 end
+		prompt:InputHoldBegin()
+		task.wait(hd + 0.1)
+		prompt:InputHoldEnd()
+	end
+end
+
+local function GetHRP2()
+	local chr = LocalPlayer.Character
+	return chr and chr:FindFirstChild("HumanoidRootPart")
+end
+
+local function TrialGetBrainrots(rarity)
+	local found = {}
+	local ws = game:GetService("Workspace")
+	local folder = ws:FindFirstChild("ActiveBrainrots")
+	if not folder then return found end
+	for _, rarFolder in ipairs(folder:GetChildren()) do
+		if rarFolder.Name:lower() == rarity:lower() then
+			for _, obj in ipairs(rarFolder:GetChildren()) do
+				local pos = nil
+				local prompt = nil
+				pcall(function()
+					if obj:IsA("BasePart") then pos=obj.Position
+					elseif obj:IsA("Model") then
+						local r=obj:FindFirstChildWhichIsA("BasePart")
+						if r then pos=r.Position end
+					end
+					prompt=obj:FindFirstChildOfClass("ProximityPrompt",true)
+				end)
+				if pos then table.insert(found,{obj=obj,pos=pos,prompt=prompt}) end
+			end
+		end
+	end
+	return found
+end
+
+local function TrialFlyTo(hrp, toPos)
+	local sPos = hrp.Position
+	local dist = (Vector3.new(toPos.X,0,toPos.Z)-Vector3.new(sPos.X,0,sPos.Z)).Magnitude
+	local steps = math.max(5, math.floor(dist * 0.28))
+	local timer = 0
+	for i = 1, steps do
+		if not AutoTrialEnabled then return false end
+		hrp = GetHRP2() if not hrp then return false end
+		local a = i/steps
+		hrp.CFrame = CFrame.new(sPos.X+(toPos.X-sPos.X)*a, -1.20, sPos.Z+(toPos.Z-sPos.Z)*a)
+		timer = timer + 0.007
+		if timer >= 0.09 then timer=0 task.wait(0.035)
+		else task.wait(0.007) end
+	end
+	return true
+end
+
+trialTogHit.MouseButton1Click:Connect(function()
+	AutoTrialEnabled = not AutoTrialEnabled
+	if AutoTrialEnabled then
+		Tw(trialTogBg,0.18,{BackgroundColor3=Color3.fromRGB(36,36,36)})
+		Tw(trialTogKnob,0.18,{Position=UDim2.new(0,23,0.5,-9),BackgroundColor3=Color3.fromRGB(255,255,255)})
+		AddLog("Auto Trial ON")
+		task.spawn(function()
+			while AutoTrialEnabled do
+				TrialStatusVal.Text="Иду к башне..."
+				TrialStatusVal.TextColor3=Color3.fromRGB(180,180,180)
+
+				local hrp = GetHRP2()
+				if not hrp then task.wait(1) continue end
+
+				-- Fly to tower
+				TrialFlyTo(hrp, TOWER_POS)
+				task.wait(0.5)
+
+				-- Try to find "Need:" prompt first (trial already active)
+				local rarity, done, need = ReadTrialTask()
+
+				if not rarity or not IsTrialActive() then
+					TrialStatusVal.Text="Начинаю Trial..."
+					local startPrompt = FindStartTrialPrompt()
+					if startPrompt then
+						hrp = GetHRP2()
+						if hrp then hrp.CFrame = CFrame.new(TOWER_POS) end
+						task.wait(0.4)
+						FireTrialPrompt(startPrompt)
+						task.wait(2.5)
+						rarity, done, need = ReadTrialTask()
+					end
+				end
+
+				if not rarity then
+					TrialStatusVal.Text="Триал не найден, жду..."
+					TrialStatusVal.TextColor3=Color3.fromRGB(220,100,100)
+					task.wait(5)
+					continue
+				end
+
+				TrialRarity = rarity
+				TrialNeed = need
+				TrialDone = done
+				local info = TRIAL_INFO[rarity]
+				local rewardTxt = info and (" → "..info.reward) or ""
+				TrialTaskVal.Text = rarity.." • "..need.." шт"..rewardTxt
+				TrialProgressVal.Text = tostring(done).." / "..tostring(need)
+				TrialStatusVal.Text = "Фармлю "..rarity.."..."
+				TrialStatusVal.TextColor3=Color3.fromRGB(100,220,100)
+				AddLog("Trial: "..rarity.." x"..need)
+
+				while AutoTrialEnabled do
+					local d2, n2 = GetTrialProgress()
+					TrialProgressVal.Text = tostring(d2).." / "..tostring(n2)
+					if not IsTrialActive() or d2 >= n2 then
+						TrialStatusVal.Text="✓ Готово! Жду след. Trial..."
+						TrialStatusVal.TextColor3=Color3.fromRGB(80,255,120)
+						AddLog("Trial завершён! "..d2.."/"..n2)
+						task.wait(8)
+						break
+					end
+
+					local brainrots = TrialGetBrainrots(TrialRarity)
+					if #brainrots > 0 then
+						for _, target in ipairs(brainrots) do
+							if not AutoTrialEnabled then break end
+							hrp = GetHRP2()
+							if not hrp then break end
+							TrialFlyTo(hrp, target.pos)
+							task.wait(0.15)
+							local prompt = target.prompt
+							if not prompt or not prompt.Parent then
+								for _,v in ipairs(target.obj:GetDescendants()) do
+									if v:IsA("ProximityPrompt") then prompt=v break end
+								end
+							end
+							if prompt and prompt.Parent then
+								FireTrialPrompt(prompt)
+								task.wait(0.5)
+								TrialDone += 1
+								TrialProgressVal.Text = tostring(TrialDone).." / "..tostring(TrialNeed)
+							end
+							-- Fly back to tower to deliver
+							hrp = GetHRP2()
+							if hrp then
+								TrialFlyTo(hrp, TOWER_POS)
+								task.wait(0.3)
+								local delPrompt = FindStartTrialPrompt()
+								if not delPrompt then
+									for _, obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
+										if obj:IsA("ProximityPrompt") and obj.ObjectText:lower():find("tower") then
+											delPrompt = obj break
+										end
+									end
+								end
+								if delPrompt then
+									FireTrialPrompt(delPrompt)
+									task.wait(0.5)
+								end
+							end
+							task.wait(0.8)
+						end
+					else
+						TrialStatusVal.Text="Нет "..TrialRarity..", жду..."
+						task.wait(3)
+					end
+				end
+			end
+		end)
+	else
+		Tw(trialTogBg,0.18,{BackgroundColor3=Color3.fromRGB(20,20,20)})
+		Tw(trialTogKnob,0.18,{Position=UDim2.new(0,3,0.5,-9),BackgroundColor3=Color3.fromRGB(88,88,88)})
+		TrialStatusVal.Text="Выключен"
+		TrialStatusVal.TextColor3=Color3.fromRGB(120,120,120)
+		TrialTaskVal.Text="—"
+		TrialProgressVal.Text="0 / 0"
+		AddLog("Auto Trial OFF")
+	end
+end)
+
+local halfW = math.floor((CW-6)/2)
+
 local function MakeInfoGrid()
 	local entries={
 		{T("version"),"v"..SCRIPT_VERSION},{T("released"),RELEASE_DATE},
@@ -1042,8 +1387,8 @@ end
 
 local function SwitchTab(tab)
 	ActiveTab=tab
-	local tabs={Main=SideTabMain, Farm=SideTabFarm, Info=SideTabInfo}
-	local pages={Main=MainPage, Farm=FarmPage, Info=InfoPage}
+	local tabs={Main=SideTabMain, Farm=SideTabFarm, Trial=SideTabTrial, Info=SideTabInfo}
+	local pages={Main=MainPage, Farm=FarmPage, Trial=TrialPage, Info=InfoPage}
 	for name,btn in pairs(tabs) do
 		if name==tab then Tw(btn,0.15,{BackgroundColor3=Color3.fromRGB(17,17,17),TextColor3=Color3.fromRGB(255,255,255)})
 		else Tw(btn,0.15,{BackgroundColor3=Color3.fromRGB(5,5,5),TextColor3=Color3.fromRGB(80,80,80)}) end
@@ -1052,6 +1397,7 @@ local function SwitchTab(tab)
 end
 SideTabMain.MouseButton1Click:Connect(function() SwitchTab("Main") end)
 SideTabFarm.MouseButton1Click:Connect(function() SwitchTab("Farm") end)
+SideTabTrial.MouseButton1Click:Connect(function() SwitchTab("Trial") end)
 SideTabInfo.MouseButton1Click:Connect(function() SwitchTab("Info") end)
 
 local WIN_H = 620
@@ -1109,7 +1455,7 @@ end
 
 local function SelectLang(lang)
 	LANG=lang
-	SideTabMain.Text=T("main") SideTabFarm.Text=T("farm") SideTabInfo.Text=T("info")
+	SideTabMain.Text=T("main") SideTabFarm.Text=T("farm") SideTabTrial.Text=T("trial") SideTabInfo.Text=T("info")
 	CloseBtn.Text=T("close")
 	flyRefs.title.Text=T("fly") flyRefs.desc.Text=T("flyDesc")
 	farmRefs.title.Text=T("autoFarm") farmRefs.desc.Text=T("autoFarmDesc")
