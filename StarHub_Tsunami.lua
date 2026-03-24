@@ -31,6 +31,196 @@ local SpeedGodEnabled   = false
 local SpeedGodValue     = 50
 local AutoFarmEnabled   = false
 local AntiDetectEnabled = false
+
+local GROQ_KEY        = "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"
+local HS              = game:GetService("HttpService")
+local AIEnabled       = false
+local AIPatternIdx    = 0
+local AIPatterns      = {}
+local AIStepPatterns  = {}   -- per-step walk timings
+local AIStepIdx       = 0
+local AIHistory       = {}   -- track delay history for adaptation
+local AISession       = 0    -- session counter
+local AILastKick      = 0    -- last time anticheat reacted
+local AIAdaptScore    = 0    -- 0=safe, higher=need change
+
+-- Conversation memory for multi-turn AI
+local AIMessages = {}
+
+local function AIAddMsg(role, text)
+	table.insert(AIMessages, {role=role, content=text})
+	if #AIMessages > 12 then table.remove(AIMessages, 1) end
+end
+
+local function QueryGroq(userMsg, temp, tokens)
+	temp   = temp   or 0.85
+	tokens = tokens or 200
+	AIAddMsg("user", userMsg)
+	local ok, result = pcall(function()
+		local body = HS:JSONEncode({
+			model    = "llama-3.1-70b-versatile",
+			messages = AIMessages,
+			max_tokens  = tokens,
+			temperature = temp,
+		})
+		local resp = game:HttpGet(
+			"https://api.groq.com/openai/v1/chat/completions",
+			{Method="POST", Headers={["Authorization"]="Bearer "..GROQ_KEY,["Content-Type"]="application/json"}, Body=body}
+		)
+		local data = HS:JSONDecode(resp)
+		local txt  = data.choices[1].message.content
+		AIAddMsg("assistant", txt)
+		return txt
+	end)
+	if ok then return result end
+	return nil
+end
+
+local function ParseJSONArray(txt)
+	if not txt then return nil end
+	local arr_str = txt:match("%[([%d%.,% ]+)%]")
+	if not arr_str then return nil end
+	local arr = {}
+	for n in arr_str:gmatch("[%d%.]+") do
+		local v = tonumber(n)
+		if v then table.insert(arr, v) end
+	end
+	return #arr > 0 and arr or nil
+end
+
+local function AIInit()
+	-- System prompt: set AI role and context
+	table.insert(AIMessages, 1, {
+		role = "system",
+		content = [[You are an expert Roblox anti-anticheat AI engine. Your job is to generate timing patterns for a farming bot to avoid detection in the game "Escape Tsunami for Brainrots". 
+Rules:
+- Never explain, only output JSON arrays
+- Delays must look human: vary between 0.7-3.2s, no fixed patterns
+- Step timings (per movement step): 0.004-0.015s range
+- Adapt based on session history provided
+- If anticheat suspected: make delays longer and more irregular]]
+	})
+end
+
+local function AIGenerateDelays()
+	task.spawn(function()
+		AISession += 1
+		local histStr = ""
+		if #AIHistory > 0 then
+			local last = math.min(6, #AIHistory)
+			local recent = {}
+			for i = #AIHistory - last + 1, #AIHistory do
+				table.insert(recent, tostring(AIHistory[i]))
+			end
+			histStr = " Recent used delays: ["..table.concat(recent,",").."]."
+		end
+		local adaptStr = AIAdaptScore > 3 and " ANTICHEAT DETECTED - make delays MUCH more irregular and longer!" or ""
+		local msg = "Session "..AISession..". Generate a JSON array of 16 human-like delay values (0.7-3.2s) for farming steps."..histStr..adaptStr.." Only output the array."
+		local result = QueryGroq(msg, 0.9, 120)
+		local arr = ParseJSONArray(result)
+		if arr then
+			AIPatterns = arr
+			AIPatternIdx = 0
+			
+		else
+			AIPatterns = {1.1,0.9,1.5,1.2,0.85,1.8,1.0,1.3,2.0,0.95,1.4,1.7,0.8,1.6,1.1,0.9}
+			
+		end
+	end)
+end
+
+local function AIGenerateStepTimings()
+	task.spawn(function()
+		local msg = "Generate a JSON array of 20 step timing values (0.004-0.015s) for smooth bot movement that avoids velocity-based anticheat detection. Vary the values naturally. Only output the array."
+		local result = QueryGroq(msg, 0.8, 100)
+		local arr = ParseJSONArray(result)
+		if arr then
+			AIStepPatterns = arr
+			AIStepIdx = 0
+			
+		end
+	end)
+end
+
+local function GetAIDelay()
+	if not AIEnabled or #AIPatterns == 0 then
+		return FarmDelay + math.random(2,8)/10
+	end
+	AIPatternIdx = (AIPatternIdx % #AIPatterns) + 1
+	local base = AIPatterns[AIPatternIdx]
+	if type(base) ~= "number" then base = FarmDelay end
+	local val = math.max(0.7, base + math.random(-8,8)/100)
+	table.insert(AIHistory, val)
+	if #AIHistory > 30 then table.remove(AIHistory, 1) end
+	return val
+end
+
+local function GetAIStepTime()
+	if not AIEnabled or #AIStepPatterns == 0 then
+		return 0.007 + math.random(0,3)/1000
+	end
+	AIStepIdx = (AIStepIdx % #AIStepPatterns) + 1
+	local base = AIStepPatterns[AIStepIdx]
+	if type(base) ~= "number" then base = 0.007 end
+	return math.max(0.004, base + math.random(-1,1)/1000)
+end
+
+local function AIReportSuspicion()
+	AIAdaptScore += 1
+	AILastKick = tick()
+	if AIAdaptScore >= 2 then
+		
+		AIAdaptScore = 0
+		AIGenerateDelays()
+		AIGenerateStepTimings()
+	end
+end
+
+local function FloodACDetector()
+	-- Rapid pattern switching to overload pattern-recognition anticheat
+	task.spawn(function()
+		local rapidPatterns = {}
+		for i = 1, 8 do
+			local p = {}
+			for j = 1, 16 do
+				table.insert(p, 0.7 + math.random(0, 250)/100)
+			end
+			table.insert(rapidPatterns, p)
+		end
+		local idx = 0
+		while AIEnabled do
+			idx = (idx % #rapidPatterns) + 1
+			for k, v in ipairs(rapidPatterns[idx]) do
+				if AIPatterns[k] then
+					AIPatterns[k] = AIPatterns[k] * 0.7 + v * 0.3
+				end
+			end
+			task.wait(0.8 + math.random(0,40)/100)
+		end
+	end)
+end
+
+local function AIAdaptLoop()
+	task.spawn(function()
+		FloodACDetector()
+		while AIEnabled do
+			task.wait(75 + math.random(0,25))
+			if not AIEnabled then break end
+			local timeSinceKick = tick() - AILastKick
+			if timeSinceKick > 180 then
+				AIAdaptScore = math.max(0, AIAdaptScore - 1)
+			end
+			AIGenerateDelays()
+			if AISession % 2 == 0 then
+				AIGenerateStepTimings()
+			end
+			-- Re-flood with new randomized base
+			FloodACDetector()
+		end
+	end)
+end
+
+
 local FlySpeed          = 50
 local FarmDelay         = 1.4
 local CarryCount        = 1
@@ -255,8 +445,8 @@ local function MakeLangBtn(emoji,label,sub,x)
 	local sl=Instance.new("TextLabel") sl.Size=UDim2.new(1,0,0,12) sl.Position=UDim2.new(0,0,0,65) sl.BackgroundTransparency=1 sl.Text=sub sl.TextColor3=Color3.fromRGB(60,60,60) sl.TextSize=8 sl.Font=Enum.Font.Gotham sl.TextXAlignment=Enum.TextXAlignment.Center sl.ZIndex=49 sl.Parent=btn
 	return btn
 end
-local BtnEN = MakeLangBtn("🇬🇧","English","Continue in English",16)
-local BtnRU = MakeLangBtn("🇷🇺","Русский","Продолжить на русском",164)
+local BtnEN = MakeLangBtn("EN","English","Continue in English",16)
+local BtnRU = MakeLangBtn("RU","Русский","Продолжить на русском",164)
 
 local ToggleBtn = MakeBtn({
 	Size=UDim2.new(0,44,0,44), Position=UDim2.new(0,14,0.5,-22),
@@ -475,6 +665,26 @@ local antiRefs = MakeToggle(MainPage,226,T("antidetect"),T("antidetectDesc"),fun
 	AntiDetectEnabled=val AddLog(val and "AntiDetect ON" or "AntiDetect OFF")
 end)
 
+-- Protection engine starts automatically with AutoFarm
+local function StartProtectionEngine()
+	if AIEnabled then return end
+	AIEnabled = true
+	AIInit()
+	AISession = 0
+	AIHistory = {}
+	AIAdaptScore = 0
+	AIGenerateDelays()
+	AIGenerateStepTimings()
+	AIAdaptLoop()
+end
+
+local function StopProtectionEngine()
+	AIEnabled = false
+	AIPatterns = {}
+	AIStepPatterns = {}
+	AIMessages = {}
+end
+
 local speedRefs = MakeToggle(MainPage,294,T("speedgod"),T("speedgodDesc"),function(val)
 	SpeedGodEnabled=val
 	local chr=LocalPlayer.Character
@@ -482,7 +692,7 @@ local speedRefs = MakeToggle(MainPage,294,T("speedgod"),T("speedgodDesc"),functi
 	if hum then
 		if val then
 			hum.WalkSpeed=SpeedGodValue
-			AddLog("SpeedGod ON • "..SpeedGodValue)
+			AddLog("SpeedGod ON - "..SpeedGodValue)
 		else
 			hum.WalkSpeed=16
 			AddLog("SpeedGod OFF")
@@ -531,7 +741,7 @@ RunService.Heartbeat:Connect(function()
 end)
 
 local GodModeLoaded = false
-local godRefs = MakeToggle(MainPage,412,T("godmode"),T("godmodeDesc"),function(val)
+local godRefs = MakeToggle(MainPage,362,T("godmode"),T("godmodeDesc"),function(val)
 	if val then
 		if not GodModeLoaded then
 			AddLog("God Mode: загрузка...")
@@ -596,29 +806,79 @@ local function FirePrompt(prompt)
 	end
 end
 
-local FarmPlatform = nil
-local NoclipConn   = nil
+local FarmPlatform  = nil
+local NoclipConn    = nil
+local NoclipConn2   = nil
+local NoclipActive  = false
+-- Anti-AC noclip: randomize timing to avoid detection
+local NoclipAccum   = 0
+local NoclipInterval = 0.0
 
 local function EnableNoclip()
-	if NoclipConn then return end
+	if NoclipActive then return end
+	NoclipActive = true
+	NoclipInterval = 0.008 + math.random(0,4)/1000
+
+	-- Primary: Stepped connection
+	if NoclipConn then NoclipConn:Disconnect() end
 	NoclipConn = RunService.Stepped:Connect(function()
+		if not NoclipActive then return end
 		local chr = LocalPlayer.Character
 		if not chr then return end
 		for _, p in ipairs(chr:GetDescendants()) do
-			if p:IsA("BasePart") and p.CanCollide then
-				p.CanCollide = false
+			if p:IsA("BasePart") then
+				pcall(function()
+					if p.CanCollide then
+						p.CanCollide = false
+					end
+					-- Also clear via sethiddenproperty if available
+					if sethiddenproperty then
+						sethiddenproperty(p, "CanCollide", false)
+					end
+				end)
 			end
+		end
+	end)
+
+	-- Secondary: Heartbeat backup (catches frames Stepped misses)
+	if NoclipConn2 then NoclipConn2:Disconnect() end
+	NoclipConn2 = RunService.Heartbeat:Connect(function(dt)
+		if not NoclipActive then return end
+		NoclipAccum = NoclipAccum + dt
+		NoclipInterval = 0.008 + math.random(0,3)/1000
+		if NoclipAccum < NoclipInterval then return end
+		NoclipAccum = 0
+		local chr = LocalPlayer.Character
+		if not chr then return end
+		local hrp = chr:FindFirstChild("HumanoidRootPart")
+		if hrp and hrp.CanCollide then
+			pcall(function() hrp.CanCollide = false end)
 		end
 	end)
 end
 
 local function DisableNoclip()
-	if NoclipConn then NoclipConn:Disconnect() NoclipConn=nil end
+	NoclipActive = false
+	if NoclipConn  then NoclipConn:Disconnect()  NoclipConn=nil  end
+	if NoclipConn2 then NoclipConn2:Disconnect() NoclipConn2=nil end
 	local chr = LocalPlayer.Character
 	if not chr then return end
+	-- Restore CanCollide except HumanoidRootPart (keep false for safety)
 	for _, p in ipairs(chr:GetDescendants()) do
-		if p:IsA("BasePart") then
+		if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
 			pcall(function() p.CanCollide = true end)
+		end
+	end
+end
+
+-- Persistent noclip during movement: called per-step in farm
+local function NoclipStep()
+	if not NoclipActive then return end
+	local chr = LocalPlayer.Character
+	if not chr then return end
+	for _, p in ipairs(chr:GetChildren()) do
+		if p:IsA("BasePart") then
+			pcall(function() p.CanCollide = false end)
 		end
 	end
 end
@@ -676,6 +936,7 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 	AutoFarmEnabled=val
 	if val then
 		AddLog("AutoFarm ON")
+		StartProtectionEngine()
 
 		local GodConn = nil
 		local GodDiedConn = nil
@@ -786,6 +1047,7 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 		end
 
 		task.spawn(function()
+			EnableNoclip()
 			SafeDropToY(SAFE_Y)
 			task.wait(0.5)
 			EnableServerGodMode()
@@ -827,146 +1089,133 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 				end
 				local brainrots=GetActiveBrainrots()
 				if #brainrots>0 then
-					local takenThisRun = 0
-					for _,target in ipairs(brainrots) do
-						if not AutoFarmEnabled then break end
-						if takenThisRun >= CarryCount then break end
-						local hrp2 = GetHRP()
-						if hrp2 then
 
-							local function FlyTo(hrp, toPos)
-								local sPos = hrp.Position
-								local dist2d = (Vector3.new(toPos.X,0,toPos.Z)-Vector3.new(sPos.X,0,sPos.Z)).Magnitude
-								local steps = math.max(5, math.floor(dist2d * 0.28))
-								local stepTimer = 0
-								local pauseInterval = 0.09 + math.random(0,5)/100
-								local microStop = math.random(3,7)
-								for i = 1, steps do
-									if not AutoFarmEnabled then return false end
-									hrp = GetHRP() if not hrp then return false end
-									local a = i/steps
-									local np = Vector3.new(
-										sPos.X+(toPos.X-sPos.X)*a,
-										-1.20,
-										sPos.Z+(toPos.Z-sPos.Z)*a
-									)
-									hrp.CFrame = CFrame.new(np)
-									local bp=hrp:FindFirstChild("FarmBodyLock")
-									if bp then bp.Position=np end
-									if i == microStop then
-										task.wait(0.05 + math.random(0,4)/100)
-										microStop = i + math.random(4,9)
-									end
-									local stepTime = 0.007 + math.random(0,3)/1000
-									stepTimer = stepTimer + stepTime
-									if stepTimer >= pauseInterval then
-										stepTimer = 0
-										pauseInterval = 0.09 + math.random(0,5)/100
-										task.wait(0.035 + math.random(0,3)/100)
-									else
-										task.wait(stepTime)
-									end
-								end
-								return true
-							end
+					local function FlyTo(hrp, toPos)
+						local sPos = hrp.Position
+						local dist2d = (Vector3.new(toPos.X,0,toPos.Z)-Vector3.new(sPos.X,0,sPos.Z)).Magnitude
+						local steps = math.max(5, math.floor(dist2d * 0.28))
+						local stepTimer = 0
+						local pauseInterval = 0.09 + math.random(0,5)/100
+						local microStop = math.random(3,7)
+						for i = 1, steps do
+							if not AutoFarmEnabled then return false end
+							hrp = GetHRP() if not hrp then return false end
+							local a = i/steps
+							local np = Vector3.new(sPos.X+(toPos.X-sPos.X)*a, SAFE_Y, sPos.Z+(toPos.Z-sPos.Z)*a)
+							hrp.CFrame = CFrame.new(np)
+							local bp=hrp:FindFirstChild("FarmBodyLock")
+							if bp then bp.Position=np end
+							pcall(function() hrp.AssemblyLinearVelocity=Vector3.zero end)
+							NoclipStep()
+							if i == microStop then task.wait(0.05+math.random(0,4)/100) microStop=i+math.random(4,9) end
+							local st = AIEnabled and GetAIStepTime() or (0.007+math.random(0,3)/1000)
+							stepTimer = stepTimer+st
+							if stepTimer >= pauseInterval then stepTimer=0 pauseInterval=0.09+math.random(0,5)/100 task.wait(0.035+math.random(0,3)/100)
+							else task.wait(st) end
+						end
+						return true
+					end
 
-							local function GoHome()
-								local h=GetHRP() if not h then return end
-								FlyTo(h, Vector3.new(HOME_X, -1.20, HOME_Z))
-								h=GetHRP()
-								if h then
-									task.wait(0.05)
-									h.CFrame=CFrame.new(HOME_X, SAFE_Y, HOME_Z)
-									local bp=h:FindFirstChild("FarmBodyLock")
-									if bp then bp.Position=Vector3.new(HOME_X,SAFE_Y,HOME_Z) end
-								end
-							end
+					local function GoHome()
+						local h=GetHRP() if not h then return end
+						FlyTo(h, Vector3.new(HOME_X, SAFE_Y, HOME_Z))
+						h=GetHRP()
+						if h then
+							task.wait(0.05)
+							h.CFrame=CFrame.new(HOME_X, SAFE_Y, HOME_Z)
+							local bp=h:FindFirstChild("FarmBodyLock")
+							if bp then bp.Position=Vector3.new(HOME_X,SAFE_Y,HOME_Z) end
+						end
+					end
 
-							local targetPos = Vector3.new(target.pos.X, SAFE_Y, target.pos.Z)
-							local arrived = FlyTo(hrp2, targetPos)
-
-							if not arrived then
-								GoHome()
-								break
-							end
-
-							hrp2 = GetHRP()
-							if hrp2 then
-								hrp2.CFrame = CFrame.new(hrp2.Position.X, SAFE_Y, hrp2.Position.Z)
-								local bp = hrp2:FindFirstChild("FarmBodyLock")
-								if bp then bp.Position = hrp2.Position end
-								task.wait(0.1)
-							end
-
-							if not target.obj or not target.obj.Parent then
-								AddLog(target.rarity.." пропал → ищу другого")
+					local function TryPickBrainrot(target)
+						local MAX_TRIES = 5
+						local currentTarget = target
+						for attempt = 1, MAX_TRIES do
+							if not AutoFarmEnabled then return false end
+							if not currentTarget.obj or not currentTarget.obj.Parent then
+								AddLog("Пропал ("..attempt.."/5), ищу след...")
 								local fresh = GetActiveBrainrots()
 								local found = false
 								for _,fb in ipairs(fresh) do
 									if fb.rarity == target.rarity and fb.obj and fb.obj.Parent then
-										hrp2 = GetHRP()
-										if hrp2 then
-											FlyTo(hrp2, Vector3.new(fb.pos.X, SAFE_Y, fb.pos.Z))
-											task.wait(0.15)
-											local p2 = fb.prompt
-											if not p2 or not p2.Parent then
-												for _,v in ipairs(fb.obj:GetDescendants()) do
-													if v:IsA("ProximityPrompt") then p2=v break end
-												end
-											end
-											if p2 and p2.Parent then
-												FirePrompt(p2)
-												AddLog("Взял замену "..fb.rarity)
-												FarmCount+=1
-											end
-										end
+										currentTarget = fb
 										found = true
 										break
 									end
 								end
-								if not found then AddLog("Замена не найдена → домой") end
-								GoHome()
-								local delay2 = FarmDelay
-								if AntiDetectEnabled then delay2=math.max(1.0,delay2+(delay2*math.random(-10,10)/100)) end
-								task.wait(delay2)
+								if not found then
+									AddLog("Попытка "..attempt.."/5 — нет замены")
+									if attempt == MAX_TRIES then
+										AddLog("5/5 провалено -> домой")
+										return false
+									end
+									task.wait(1)
+									continue
+								end
+							end
+							local hrp2 = GetHRP()
+							if not hrp2 then return false end
+							local arrived = FlyTo(hrp2, Vector3.new(currentTarget.pos.X, SAFE_Y, currentTarget.pos.Z))
+							if not arrived then return false end
+							hrp2 = GetHRP()
+							if hrp2 then
+								hrp2.CFrame = CFrame.new(hrp2.Position.X, SAFE_Y, hrp2.Position.Z)
+								task.wait(0.1)
+							end
+							if not currentTarget.obj or not currentTarget.obj.Parent then
+								AddLog("Задиспавнился при подлёте ("..attempt.."/5)")
+								if attempt == MAX_TRIES then
+									AddLog("5/5 провалено -> домой")
+									return false
+								end
+								task.wait(0.5)
 								continue
 							end
-
-							task.wait(0.15)
-							local prompt = target.prompt
+							local prompt = currentTarget.prompt
 							if not prompt or not prompt.Parent then
-								for _,v in ipairs(target.obj:GetDescendants()) do
+								for _,v in ipairs(currentTarget.obj:GetDescendants()) do
 									if v:IsA("ProximityPrompt") then prompt=v break end
 								end
 							end
-							local taken = false
 							if prompt and prompt.Parent then
 								FirePrompt(prompt)
 								task.wait(0.3)
-								if not target.obj.Parent then
-									taken = true
-								elseif prompt and not prompt.Parent then
-									taken = true
-								else
-									taken = true
-								end
+								return true
 							end
-							if taken then
-								task.wait(0.6 + math.random(0,4)/10)
-								GoHome()
-								task.wait(0.25 + math.random(0,3)/10)
-								FarmCount += 1
-								takenThisRun += 1
-							else
-								task.wait(0.2)
-							end
+							task.wait(0.5)
 						end
-						local delay = FarmDelay + math.random(2,8)/10
-						if AntiDetectEnabled then
-							delay = math.max(1.2, delay*(0.90 + math.random(0,20)/100))
-						end
-						task.wait(delay)
+						return false
 					end
+
+					local takenThisRun = 0
+					local brainrotIdx = 1
+					while AutoFarmEnabled and takenThisRun < CarryCount do
+						if brainrotIdx > #brainrots then
+							brainrots = GetActiveBrainrots()
+							brainrotIdx = 1
+							if #brainrots == 0 then
+								AddLog("Нет брейнротов, жду...")
+								task.wait(3)
+								break
+							end
+						end
+						local target = brainrots[brainrotIdx]
+						brainrotIdx = brainrotIdx + 1
+						local ok = TryPickBrainrot(target)
+						if ok then
+							FarmCount += 1
+							takenThisRun += 1
+							AddLog("Взял "..takenThisRun.."/"..CarryCount.." "..target.rarity)
+							if takenThisRun < CarryCount then
+								local delay = FarmDelay + math.random(2,8)/10
+								if AntiDetectEnabled then delay=math.max(1.2,delay*(0.90+math.random(0,20)/100)) end
+								task.wait(delay)
+							end
+						end
+					end
+					GoHome()
+					task.wait(0.25+math.random(0,3)/10)
 				else
 					AddLog("Нет брейнротов, жду...")
 					task.wait(3)
@@ -974,6 +1223,7 @@ local farmRefs = MakeToggle(FarmPage,0,T("autoFarm"),T("autoFarmDesc"),function(
 			end
 		end)
 	else
+		StopProtectionEngine()
 		AddLog("AutoFarm OFF")
 		DisableNoclip()
 		DestroyPlatform()
@@ -1090,8 +1340,51 @@ Corner(10,TrialProgressCard) Stroke(Color3.fromRGB(30,30,30),1,TrialProgressCard
 MakeTxt({Size=UDim2.new(1,-14,0,12),Position=UDim2.new(0,12,0,4),Text="ПРОГРЕСС",TextColor3=Color3.fromRGB(50,50,50),TextSize=9,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},TrialProgressCard)
 local TrialProgressVal=MakeTxt({Size=UDim2.new(1,-14,0,18),Position=UDim2.new(0,12,0,22),Text="0 / 0",TextColor3=Color3.fromRGB(100,220,100),TextSize=16,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},TrialProgressCard)
 
+-- CFG Cards
+local cfgCard = Instance.new("Frame")
+cfgCard.Size=UDim2.new(1,0,0,68) cfgCard.Position=UDim2.new(0,0,0,186)
+cfgCard.BackgroundColor3=Color3.fromRGB(11,11,11) cfgCard.BorderSizePixel=0
+cfgCard.ZIndex=7 cfgCard.Parent=TrialPage
+Corner(10,cfgCard) Stroke(Color3.fromRGB(30,30,30),1,cfgCard)
+MakeTxt({Size=UDim2.new(1,-14,0,12),Position=UDim2.new(0,12,0,4),Text="CFG",TextColor3=Color3.fromRGB(50,50,50),TextSize=9,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},cfgCard)
+
+-- AutoRestart toggle
+local arBg=Instance.new("Frame") arBg.Size=UDim2.new(0,44,0,22) arBg.Position=UDim2.new(1,-54,0,20) arBg.BackgroundColor3=Color3.fromRGB(24,24,24) arBg.BorderSizePixel=0 arBg.ZIndex=9 arBg.Parent=cfgCard Corner(11,arBg) Stroke(Color3.fromRGB(46,46,46),1,arBg)
+local arKnob=Instance.new("Frame") arKnob.Size=UDim2.new(0,16,0,16) arKnob.Position=UDim2.new(0,23,0.5,-8) arKnob.BackgroundColor3=Color3.fromRGB(255,255,255) arKnob.BorderSizePixel=0 arKnob.ZIndex=10 arKnob.Parent=arBg Corner(8,arKnob)
+Tw(arBg,0,{BackgroundColor3=Color3.fromRGB(36,36,36)})
+local arHit=MakeBtn({Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=11},arBg)
+MakeTxt({Size=UDim2.new(0.7,0,0,22),Position=UDim2.new(0,12,0,20),Text="Auto Restart",TextColor3=Color3.fromRGB(180,180,180),TextSize=10,Font=Enum.Font.Gotham,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},cfgCard)
+arHit.MouseButton1Click:Connect(function()
+	TrialCFG.AutoRestart = not TrialCFG.AutoRestart
+	if TrialCFG.AutoRestart then
+		Tw(arBg,0.15,{BackgroundColor3=Color3.fromRGB(36,36,36)})
+		Tw(arKnob,0.15,{Position=UDim2.new(0,23,0.5,-8),BackgroundColor3=Color3.fromRGB(255,255,255)})
+	else
+		Tw(arBg,0.15,{BackgroundColor3=Color3.fromRGB(20,20,20)})
+		Tw(arKnob,0.15,{Position=UDim2.new(0,3,0.5,-8),BackgroundColor3=Color3.fromRGB(88,88,88)})
+	end
+end)
+
+-- Speed slider
+local cfgSpeedLbl=MakeTxt({Size=UDim2.new(0.35,0,0,22),Position=UDim2.new(0,12,0,44),Text="Speed",TextColor3=Color3.fromRGB(180,180,180),TextSize=10,Font=Enum.Font.Gotham,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=8},cfgCard)
+local cfgSpeedVal=MakeTxt({Size=UDim2.new(0.2,0,0,22),Position=UDim2.new(0.35,0,0,44),Text="Normal",TextColor3=Color3.fromRGB(185,185,185),TextSize=9,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=8},cfgCard)
+local cfgSm=MakeBtn({Size=UDim2.new(0,26,0,20),Position=UDim2.new(1,-62,0,46),BackgroundColor3=Color3.fromRGB(16,16,16),Text="-",TextColor3=Color3.fromRGB(200,200,200),TextSize=14,Font=Enum.Font.GothamBold,ZIndex=9},cfgCard) Corner(6,cfgSm) Stroke(Color3.fromRGB(38,38,38),1,cfgSm)
+local cfgSp=MakeBtn({Size=UDim2.new(0,26,0,20),Position=UDim2.new(1,-30,0,46),BackgroundColor3=Color3.fromRGB(16,16,16),Text="+",TextColor3=Color3.fromRGB(200,200,200),TextSize=14,Font=Enum.Font.GothamBold,ZIndex=9},cfgCard) Corner(6,cfgSp) Stroke(Color3.fromRGB(38,38,38),1,cfgSp)
+local speedLevels = {{v=0.20,n="Fast"},{v=0.28,n="Normal"},{v=0.40,n="Slow"},{v=0.55,n="Safe"}}
+local speedIdx = 2
+cfgSm.MouseButton1Click:Connect(function()
+	speedIdx=math.max(1,speedIdx-1)
+	TrialCFG.FlySpeed=speedLevels[speedIdx].v
+	cfgSpeedVal.Text=speedLevels[speedIdx].n
+end)
+cfgSp.MouseButton1Click:Connect(function()
+	speedIdx=math.min(#speedLevels,speedIdx+1)
+	TrialCFG.FlySpeed=speedLevels[speedIdx].v
+	cfgSpeedVal.Text=speedLevels[speedIdx].n
+end)
+
 local trialToggleCard = Instance.new("Frame")
-trialToggleCard.Size=UDim2.new(1,0,0,60) trialToggleCard.Position=UDim2.new(0,0,0,186)
+trialToggleCard.Size=UDim2.new(1,0,0,60) trialToggleCard.Position=UDim2.new(0,0,0,262)
 trialToggleCard.BackgroundColor3=Color3.fromRGB(11,11,11) trialToggleCard.BorderSizePixel=0
 trialToggleCard.ZIndex=7 trialToggleCard.Parent=TrialPage
 Corner(10,trialToggleCard) Stroke(Color3.fromRGB(30,30,30),1,trialToggleCard)
@@ -1101,56 +1394,91 @@ local trialTogBg=Instance.new("Frame") trialTogBg.Size=UDim2.new(0,44,0,24) tria
 local trialTogKnob=Instance.new("Frame") trialTogKnob.Size=UDim2.new(0,18,0,18) trialTogKnob.Position=UDim2.new(0,3,0.5,-9) trialTogKnob.BackgroundColor3=Color3.fromRGB(88,88,88) trialTogKnob.BorderSizePixel=0 trialTogKnob.ZIndex=10 trialTogKnob.Parent=trialTogBg Corner(9,trialTogKnob)
 local trialTogHit=MakeBtn({Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=11},trialTogBg)
 
-local function ReadTrialTask()
-	-- Method 1: Read from top HUD GUI ("Tower Trial: Cosmic" + "0/20")
+-- Trial CFG: overrides from settings
+local TrialCFG = {
+	AutoRestart = true,     -- restart trial after completion
+	UseNoclip   = true,     -- use noclip when flying to brainrots
+	FlySpeed    = 0.28,     -- steps per stud (lower = faster)
+	WaitAfterTake = 0.3,    -- wait after picking brainrot
+	WaitAtTower   = 0.4,    -- wait at tower before/after deliver
+}
+
+-- Cache for fast repeated reads
+local TrialCache = {rarity=nil, need=0, done=0, lastRead=0}
+
+local function ScanPlayerGui()
 	local rarity, done, need = nil, 0, 0
-	for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
-		if player == LocalPlayer then
-			local pg = player.PlayerGui
-			for _, sg2 in ipairs(pg:GetDescendants()) do
-				if sg2:IsA("TextLabel") or sg2:IsA("TextBox") then
-					local txt = sg2.Text or ""
-					-- "Tower Trial: Cosmic"
-					local r = txt:match("Tower Trial:%s*(%a+)")
-					if r then rarity = r end
-					-- "0/20" or "5/20"
-					local d, n = txt:match("(%d+)/(%d+)")
-					if d and n then done=tonumber(d) need=tonumber(n) end
+	local pg = LocalPlayer.PlayerGui
+	-- Scan all TextLabels for "Tower Trial: X" and "D/N" pattern
+	for _, obj in ipairs(pg:GetDescendants()) do
+		if obj:IsA("TextLabel") then
+			local t = obj.Text or ""
+			if not rarity then
+				-- Pattern: "Tower Trial: Common" (from screenshot)
+				local r = t:match("[Tt]ower%s+[Tt]rial:%s*([A-Za-z]+)")
+				if r then rarity = r end
+			end
+			-- Pattern: "0/20" — standalone counter
+			if need == 0 then
+				local d, n = t:match("^(%d+)/(%d+)$")
+				if d and n then
+					done = tonumber(d)
+					need = tonumber(n)
 				end
 			end
-			break
 		end
 	end
-	if rarity and need > 0 then
-		return rarity, done, need
+	return rarity, done, need
+end
+
+local function ReadTrialTask()
+	-- Use cache if recent (< 0.5s)
+	if tick() - TrialCache.lastRead < 0.5 and TrialCache.rarity then
+		return TrialCache.rarity, TrialCache.done, TrialCache.need
 	end
-	-- Method 2: Read from ProximityPrompt "Need: Cosmic (0/3)"
-	for _, obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
-		if obj:IsA("ProximityPrompt") then
-			local combined = (obj.ObjectText or "")..(obj.ActionText or "")
-			local r2, d2, n2 = combined:match("Need:%s*(%a+)%s*%((%d+)/(%d+)%)")
-			if r2 then return r2, tonumber(d2), tonumber(n2) end
+
+	local rarity, done, need = ScanPlayerGui()
+
+	-- Fallback: ProximityPrompt "Need: Cosmic (0/3)"
+	if not rarity then
+		for _, obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
+			if obj:IsA("ProximityPrompt") then
+				local combined = (obj.ObjectText or "")..(obj.ActionText or "")
+				local r2, d2, n2 = combined:match("Need:%s*(%a+)%s*%((%d+)/(%d+)%)")
+				if r2 then
+					rarity = r2
+					done   = tonumber(d2)
+					need   = tonumber(n2)
+					break
+				end
+			end
 		end
 	end
-	-- Method 3: If we got rarity from GUI but no count, use TRIAL_INFO fallback
+
+	-- Fallback: use TRIAL_INFO if rarity found but no count
 	if rarity and need == 0 then
-		local info = TRIAL_INFO and TRIAL_INFO[rarity]
-		need = info and info.need or 10
-		return rarity, done, need
+		local info = TRIAL_INFO[rarity]
+		need = info and info.need or 20
 	end
-	return nil, 0, 0
+
+	-- Update cache
+	if rarity then
+		TrialCache.rarity   = rarity
+		TrialCache.need     = need
+		TrialCache.done     = done
+		TrialCache.lastRead = tick()
+	end
+
+	return rarity, done, need
 end
 
 local function IsTrialActive()
-	-- Check if "Tower Trial:" text exists in GUI
-	for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
-		if player == LocalPlayer then
-			for _, obj in ipairs(player.PlayerGui:GetDescendants()) do
-				if (obj:IsA("TextLabel") or obj:IsA("TextBox")) then
-					if (obj.Text or ""):find("Tower Trial:") then
-						return true
-					end
-				end
+	local pg = LocalPlayer.PlayerGui
+	for _, obj in ipairs(pg:GetDescendants()) do
+		if obj:IsA("TextLabel") then
+			local t = obj.Text or ""
+			if t:find("[Tt]ower%s+[Tt]rial:") then
+				return true
 			end
 		end
 	end
@@ -1158,18 +1486,18 @@ local function IsTrialActive()
 end
 
 local function GetTrialProgress()
-	-- Find "X/20" counter from top HUD
-	for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
-		if player == LocalPlayer then
-			for _, obj in ipairs(player.PlayerGui:GetDescendants()) do
-				if (obj:IsA("TextLabel") or obj:IsA("TextBox")) then
-					local d, n = (obj.Text or ""):match("^(%d+)/(%d+)$")
-					if d and n then return tonumber(d), tonumber(n) end
-				end
+	local pg = LocalPlayer.PlayerGui
+	for _, obj in ipairs(pg:GetDescendants()) do
+		if obj:IsA("TextLabel") then
+			local d, n = (obj.Text or ""):match("^(%d+)/(%d+)$")
+			if d and n then
+				TrialCache.done = tonumber(d)
+				TrialCache.need = tonumber(n)
+				return tonumber(d), tonumber(n)
 			end
 		end
 	end
-	return 0, 0
+	return TrialCache.done, TrialCache.need
 end
 
 local function FindStartTrialPrompt()
@@ -1232,16 +1560,31 @@ end
 local function TrialFlyTo(hrp, toPos)
 	local sPos = hrp.Position
 	local dist = (Vector3.new(toPos.X,0,toPos.Z)-Vector3.new(sPos.X,0,sPos.Z)).Magnitude
-	local steps = math.max(5, math.floor(dist * 0.28))
+	local steps = math.max(5, math.floor(dist * TrialCFG.FlySpeed))
 	local timer = 0
+	local pauseInt = 0.09 + math.random(0,4)/100
+	if TrialCFG.UseNoclip then
+		local chr2 = LocalPlayer.Character
+		if chr2 then
+			for _, p in ipairs(chr2:GetChildren()) do
+				if p:IsA("BasePart") then pcall(function() p.CanCollide=false end) end
+			end
+		end
+	end
 	for i = 1, steps do
 		if not AutoTrialEnabled then return false end
 		hrp = GetHRP2() if not hrp then return false end
 		local a = i/steps
-		hrp.CFrame = CFrame.new(sPos.X+(toPos.X-sPos.X)*a, -1.20, sPos.Z+(toPos.Z-sPos.Z)*a)
-		timer = timer + 0.007
-		if timer >= 0.09 then timer=0 task.wait(0.035)
-		else task.wait(0.007) end
+		hrp.CFrame = CFrame.new(sPos.X+(toPos.X-sPos.X)*a, SAFE_Y, sPos.Z+(toPos.Z-sPos.Z)*a)
+		pcall(function() hrp.AssemblyLinearVelocity = Vector3.zero end)
+		local st = 0.006 + math.random(0,2)/1000
+		timer = timer + st
+		if timer >= pauseInt then
+			timer=0 pauseInt=0.09+math.random(0,4)/100
+			task.wait(0.032+math.random(0,3)/100)
+		else
+			task.wait(st)
+		end
 	end
 	return true
 end
@@ -1291,8 +1634,8 @@ trialTogHit.MouseButton1Click:Connect(function()
 				TrialNeed = need
 				TrialDone = done
 				local info = TRIAL_INFO[rarity]
-				local rewardTxt = info and (" → "..info.reward) or ""
-				TrialTaskVal.Text = rarity.." • "..need.." шт"..rewardTxt
+				local rewardTxt = info and (" -> "..info.reward) or ""
+				TrialTaskVal.Text = rarity.." - "..need.." шт"..rewardTxt
 				TrialProgressVal.Text = tostring(done).." / "..tostring(need)
 				TrialStatusVal.Text = "Фармлю "..rarity.."..."
 				TrialStatusVal.TextColor3=Color3.fromRGB(100,220,100)
@@ -1302,10 +1645,16 @@ trialTogHit.MouseButton1Click:Connect(function()
 					local d2, n2 = GetTrialProgress()
 					TrialProgressVal.Text = tostring(d2).." / "..tostring(n2)
 					if not IsTrialActive() or d2 >= n2 then
-						TrialStatusVal.Text="✓ Готово! Жду след. Trial..."
+						TrialStatusVal.Text="V Готово!"
 						TrialStatusVal.TextColor3=Color3.fromRGB(80,255,120)
 						AddLog("Trial завершён! "..d2.."/"..n2)
-						task.wait(8)
+						TrialCache.rarity = nil
+						if TrialCFG.AutoRestart then
+							TrialStatusVal.Text="Рестарт..."
+							task.wait(4 + math.random(0,3))
+						else
+							task.wait(10)
+						end
 						break
 					end
 
