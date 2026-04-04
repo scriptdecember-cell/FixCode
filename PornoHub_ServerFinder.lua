@@ -26,6 +26,8 @@ local entryOrder   = 0
 local currentMode  = "Public"
 local selectedSort = "Asc"
 local guiOpen      = true
+local foundServers = {} -- { jobId, playing, maxP, ping }
+local maxPingFilter = 9999 -- 9999 = any (no limit)
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "PH_SF"
@@ -33,6 +35,9 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.IgnoreGuiInset = true
 ScreenGui.Parent = game.CoreGui
+
+-- FIX: forward declare Main so ToggleBtn callback can reference it
+local Main
 
 local ToggleBtn = Instance.new("TextButton")
 ToggleBtn.Size = UDim2.fromOffset(44, 44)
@@ -59,8 +64,8 @@ ToggleBtn.InputBegan:Connect(function(inp)
             if inp.UserInputState == Enum.UserInputState.End then
                 if not TDrag then
                     guiOpen = not guiOpen
-                    Main.Visible = guiOpen
-                    ToggleBtn.Text = guiOpen and "✕" or "PH"
+                    Main.Visible = guiOpen  -- works now because Main is forward declared
+                    ToggleBtn.Text = guiOpen and "PH" or "PH"
                 end
                 TDrag = false
             end
@@ -83,7 +88,8 @@ UserInputService.InputChanged:Connect(function(inp)
     end
 end)
 
-local Main = Instance.new("Frame")
+-- FIX: assign Main (no 'local' keyword — uses the forward-declared upvalue)
+Main = Instance.new("Frame")
 Main.Name = "Main"
 Main.Size = UDim2.fromOffset(W, H)
 Main.Position = UDim2.new(0.5, -W / 2, 0.5, -H / 2)
@@ -152,22 +158,18 @@ SubT.TextColor3 = Color3.fromRGB(30, 30, 30)
 SubT.TextXAlignment = Enum.TextXAlignment.Left
 SubT.ZIndex = 6
 
-local function TBtn(xOff, txt)
-    local b = Instance.new("TextButton", TopBar)
-    b.Size = UDim2.new(0, 28, 0, 22)
-    b.Position = UDim2.new(1, xOff, 0.5, -11)
-    b.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
-    b.Text = txt
-    b.Font = Enum.Font.GothamBold
-    b.TextSize = 11
-    b.TextColor3 = PH_WHITE
-    b.BorderSizePixel = 0
-    b.ZIndex = 7
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
-    return b
-end
-
-local CloseBtn = TBtn(-34, "❌")
+-- FIX: close button now uses ❌ emoji
+local CloseBtn = Instance.new("TextButton", TopBar)
+CloseBtn.Size = UDim2.new(0, 32, 0, 26)
+CloseBtn.Position = UDim2.new(1, -38, 0.5, -13)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+CloseBtn.Text = "❌"
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 14
+CloseBtn.TextColor3 = PH_WHITE
+CloseBtn.BorderSizePixel = 0
+CloseBtn.ZIndex = 7
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 5)
 CloseBtn.MouseButton1Click:Connect(function()
     guiOpen = false
     Main.Visible = false
@@ -209,6 +211,20 @@ local Content = Instance.new("Frame", Main)
 Content.Size = UDim2.new(1, 0, 1, -46)
 Content.Position = UDim2.new(0, 0, 0, 46)
 Content.BackgroundTransparency = 1
+
+-- Helper: join best server (lowest ping)
+local function JoinBestServer(setStatus)
+    if #foundServers == 0 then
+        setStatus("No servers found!", Color3.fromRGB(255,60,60))
+        return
+    end
+    local best = foundServers[1]
+    for _, sv in ipairs(foundServers) do
+        if sv.ping < best.ping then best = sv end
+    end
+    setStatus("Joining best (" .. best.ping .. "ms)...", Color3.fromRGB(255,200,0))
+    TeleportService:TeleportToPlaceInstance(PlaceId, best.jobId, LocalPlayer)
+end
 
 if isMobile then
     local LeftCol = Instance.new("Frame", Content)
@@ -335,9 +351,59 @@ if isMobile then
         qb.MouseButton1Click:Connect(function() CountBox.Text = tostring(v) end)
     end
 
-    MiniLbl(LeftCol, "SORT", 5)
+    MiniLbl(LeftCol, "MAX PING", 5)
 
-    local SortCard = CardRow(LeftCol, 30, 6)
+    local PingCard = CardRow(LeftCol, 34, 6)
+    local PingBox = Instance.new("TextBox", PingCard)
+    PingBox.Size = UDim2.new(0.45, 0, 0.8, 0)
+    PingBox.Position = UDim2.new(0, 6, 0.1, 0)
+    PingBox.BackgroundColor3 = PH_DARK
+    PingBox.Text = "any"
+    PingBox.Font = Enum.Font.GothamBold
+    PingBox.TextSize = 13
+    PingBox.TextColor3 = Color3.fromRGB(100,220,100)
+    PingBox.BorderSizePixel = 0
+    PingBox.ClearTextOnFocus = false
+    Instance.new("UICorner", PingBox).CornerRadius = UDim.new(0, 6)
+
+    local pqrow = Instance.new("Frame", PingCard)
+    pqrow.Size = UDim2.new(0.52, 0, 1, 0)
+    pqrow.Position = UDim2.new(0.47, 0, 0, 0)
+    pqrow.BackgroundTransparency = 1
+    local pqrl = Instance.new("UIListLayout", pqrow)
+    pqrl.FillDirection = Enum.FillDirection.Horizontal
+    pqrl.Padding = UDim.new(0, 2)
+    pqrl.VerticalAlignment = Enum.VerticalAlignment.Center
+
+    for _, pv in ipairs({50, 100, 200}) do
+        local pb = Instance.new("TextButton", pqrow)
+        pb.Size = UDim2.new(0, 28, 0, 22)
+        pb.BackgroundColor3 = PH_DARK
+        pb.Text = tostring(pv)
+        pb.Font = Enum.Font.GothamBold
+        pb.TextSize = 10
+        pb.TextColor3 = Color3.fromRGB(100,220,100)
+        pb.BorderSizePixel = 0
+        Instance.new("UICorner", pb).CornerRadius = UDim.new(0, 5)
+        pb.MouseButton1Click:Connect(function()
+            PingBox.Text = tostring(pv)
+            maxPingFilter = pv
+        end)
+    end
+
+    PingBox.FocusLost:Connect(function()
+        local v = tonumber(PingBox.Text)
+        if v and v > 0 then
+            maxPingFilter = v
+        else
+            maxPingFilter = 9999
+            PingBox.Text = "any"
+        end
+    end)
+
+    MiniLbl(LeftCol, "SORT", 7)
+
+    local SortCard = CardRow(LeftCol, 30, 8)
     local SortRow = Instance.new("Frame", SortCard)
     SortRow.Size = UDim2.new(1, 0, 1, 0)
     SortRow.BackgroundTransparency = 1
@@ -373,9 +439,9 @@ if isMobile then
         end)
     end
 
-    MiniLbl(LeftCol, "STATUS", 7)
+    MiniLbl(LeftCol, "STATUS", 9)
 
-    local StatusCard = CardRow(LeftCol, 30, 8)
+    local StatusCard = CardRow(LeftCol, 30, 10)
     local StatusDot = Instance.new("Frame", StatusCard)
     StatusDot.Size = UDim2.new(0, 7, 0, 7)
     StatusDot.Position = UDim2.new(0, 8, 0.5, -3)
@@ -405,7 +471,7 @@ if isMobile then
     MiniLbl(RightCol, "RESULTS", 1)
 
     local ListScroll = Instance.new("ScrollingFrame", RightCol)
-    ListScroll.Size = UDim2.new(1, 0, 0, 184)
+    ListScroll.Size = UDim2.new(1, 0, 0, 152)
     ListScroll.LayoutOrder = 2
     ListScroll.BackgroundColor3 = PH_DARK
     ListScroll.BorderSizePixel = 0
@@ -436,6 +502,8 @@ if isMobile then
     local function AddEntry(jobId, playing, maxP, ping)
         EmptyTxt.Visible = false
         entryOrder += 1
+        -- track for JOIN BEST
+        table.insert(foundServers, { jobId = jobId, playing = playing, maxP = maxP, ping = ping or 9999 })
 
         local entry = Instance.new("Frame", ListScroll)
         entry.Size = UDim2.new(1, 0, 0, 36)
@@ -461,8 +529,13 @@ if isMobile then
         plr.TextColor3 = PH_ORANGE
         plr.TextXAlignment = Enum.TextXAlignment.Left
 
+        -- ping color: green < 80ms, orange < 150ms, red >= 150ms
         local pingC = PH_GREY
-        if ping then pingC = ping < 80 and Color3.fromRGB(100,220,100) or ping < 150 and PH_ORANGE or Color3.fromRGB(220,80,80) end
+        if ping then
+            pingC = ping < 80 and Color3.fromRGB(100,220,100)
+                 or ping < 150 and PH_ORANGE
+                 or Color3.fromRGB(220,80,80)
+        end
 
         local pingL = Instance.new("TextLabel", entry)
         pingL.Size = UDim2.new(0, 36, 1, 0)
@@ -520,11 +593,31 @@ if isMobile then
     ClearBtn.BorderSizePixel = 0
     Instance.new("UICorner", ClearBtn).CornerRadius = UDim.new(0, 8)
 
+    -- JOIN BEST button row (mobile)
+    local BestRow = Instance.new("Frame", RightCol)
+    BestRow.Size = UDim2.new(1, 0, 0, 28)
+    BestRow.BackgroundTransparency = 1
+    BestRow.LayoutOrder = 4
+
+    local BestBtn = Instance.new("TextButton", BestRow)
+    BestBtn.Size = UDim2.new(1, 0, 1, 0)
+    BestBtn.BackgroundColor3 = Color3.fromRGB(30, 80, 30)
+    BestBtn.Text = "⚡ JOIN BEST (min ping)"
+    BestBtn.Font = Enum.Font.GothamBold
+    BestBtn.TextSize = 10
+    BestBtn.TextColor3 = Color3.fromRGB(100,220,100)
+    BestBtn.BorderSizePixel = 0
+    Instance.new("UICorner", BestBtn).CornerRadius = UDim.new(0, 8)
+    BestBtn.MouseButton1Click:Connect(function()
+        JoinBestServer(SetStatus)
+    end)
+
     local function ClearList()
         for _, c in ipairs(ListScroll:GetChildren()) do
             if c:IsA("Frame") then c:Destroy() end
         end
         foundCount = 0; checkedCount = 0; entryOrder = 0
+        foundServers = {}
         EmptyTxt.Visible = true
         SetStatus("Cleared.", PH_GREY)
     end
@@ -542,7 +635,8 @@ if isMobile then
             for _, s in ipairs(res.data) do
                 if not isSearching then break end
                 checkedCount += 1
-                if s.playing and s.playing <= maxP then
+                local sPing = s.ping or 9999
+                if s.playing and s.playing <= maxP and sPing <= maxPingFilter then
                     foundCount += 1
                     AddEntry(s.id, s.playing, s.maxPlayers or 0, s.ping)
                     UpdateStatus()
@@ -560,7 +654,8 @@ if isMobile then
         for _, s in ipairs(res.data) do
             if not isSearching then break end
             checkedCount += 1
-            if s.playing and s.playing <= maxP then
+            local sPing = s.ping or 9999
+            if s.playing and s.playing <= maxP and sPing <= maxPingFilter then
                 foundCount += 1
                 AddEntry(s.id, s.playing, s.maxPlayers or 0, s.ping)
                 UpdateStatus()
@@ -595,6 +690,7 @@ if isMobile then
     end)
 
 else
+    -- DESKTOP LAYOUT
     local Scroll = Instance.new("ScrollingFrame", Content)
     Scroll.Size = UDim2.new(1, 0, 1, 0)
     Scroll.BackgroundTransparency = 1
@@ -690,8 +786,45 @@ else
         qb.MouseLeave:Connect(function() qb.BackgroundColor3 = PH_DARK end)
     end
 
-    local g3 = GF(3); ML(g3, "SORT ORDER", 0)
-    local SortRow = Instance.new("Frame", g3)
+    local g3 = GF(3); ML(g3, "MAX PING  (ms)", 0)
+    local PingCRow = Instance.new("Frame", g3)
+    PingCRow.Size = UDim2.new(1, 0, 0, 38); PingCRow.BackgroundTransparency = 1; PingCRow.LayoutOrder = 1
+    local pcrl = Instance.new("UIListLayout", PingCRow)
+    pcrl.FillDirection = Enum.FillDirection.Horizontal; pcrl.Padding = UDim.new(0, 5)
+    pcrl.VerticalAlignment = Enum.VerticalAlignment.Center
+
+    local PingBox = Instance.new("TextBox", PingCRow)
+    PingBox.Size = UDim2.new(0, 65, 0, 36); PingBox.BackgroundColor3 = PH_CARD
+    PingBox.Text = "any"; PingBox.Font = Enum.Font.GothamBold; PingBox.TextSize = 16
+    PingBox.TextColor3 = Color3.fromRGB(100,220,100); PingBox.BorderSizePixel = 0; PingBox.ClearTextOnFocus = false
+    Instance.new("UICorner", PingBox).CornerRadius = UDim.new(0, 8)
+
+    for _, pv in ipairs({50, 80, 100, 150, 200}) do
+        local pb = Instance.new("TextButton", PingCRow)
+        pb.Size = UDim2.new(0, 40, 0, 36); pb.BackgroundColor3 = PH_DARK
+        pb.Text = tostring(pv); pb.Font = Enum.Font.GothamBold; pb.TextSize = 13
+        pb.TextColor3 = Color3.fromRGB(100,220,100); pb.BorderSizePixel = 0
+        Instance.new("UICorner", pb).CornerRadius = UDim.new(0, 7)
+        pb.MouseButton1Click:Connect(function()
+            PingBox.Text = tostring(pv)
+            maxPingFilter = pv
+        end)
+        pb.MouseEnter:Connect(function() pb.BackgroundColor3 = Color3.fromRGB(38,38,38) end)
+        pb.MouseLeave:Connect(function() pb.BackgroundColor3 = PH_DARK end)
+    end
+
+    PingBox.FocusLost:Connect(function()
+        local v = tonumber(PingBox.Text)
+        if v and v > 0 then
+            maxPingFilter = v
+        else
+            maxPingFilter = 9999
+            PingBox.Text = "any"
+        end
+    end)
+
+    local g4 = GF(4); ML(g4, "SORT ORDER", 0)
+    local SortRow = Instance.new("Frame", g4)
     SortRow.Size = UDim2.new(1, 0, 0, 34); SortRow.BackgroundTransparency = 1; SortRow.LayoutOrder = 1
     local srl = Instance.new("UIListLayout", SortRow)
     srl.FillDirection = Enum.FillDirection.Horizontal; srl.Padding = UDim.new(0, 5)
@@ -713,8 +846,8 @@ else
         end)
     end
 
-    local g4 = GF(4); ML(g4, "STATUS", 0)
-    local StatusCard = CR(g4, 34, 1)
+    local g5 = GF(5); ML(g5, "STATUS", 0)
+    local StatusCard = CR(g5, 34, 1)
     local StatusDot = Instance.new("Frame", StatusCard)
     StatusDot.Size = UDim2.new(0, 8, 0, 8); StatusDot.Position = UDim2.new(0, 10, 0.5, -4)
     StatusDot.BackgroundColor3 = PH_GREY; StatusDot.BorderSizePixel = 0
@@ -733,8 +866,8 @@ else
         SetStatus(("Found %d  |  Checked %d"):format(foundCount, checkedCount), Color3.fromRGB(100,220,100))
     end
 
-    local g5 = GF(5); ML(g5, "RESULTS", 0)
-    local ListScroll = Instance.new("ScrollingFrame", g5)
+    local g6 = GF(6); ML(g6, "RESULTS", 0)
+    local ListScroll = Instance.new("ScrollingFrame", g6)
     ListScroll.Size = UDim2.new(1, 0, 0, 180); ListScroll.LayoutOrder = 1
     ListScroll.BackgroundColor3 = PH_DARK; ListScroll.BorderSizePixel = 0
     ListScroll.ScrollBarThickness = 3; ListScroll.ScrollBarImageColor3 = PH_ORANGE
@@ -753,6 +886,9 @@ else
 
     local function AddEntry(jobId, playing, maxP, ping)
         EmptyTxt.Visible = false; entryOrder += 1
+        -- track for JOIN BEST
+        table.insert(foundServers, { jobId = jobId, playing = playing, maxP = maxP, ping = ping or 9999 })
+
         local entry = Instance.new("Frame", ListScroll)
         entry.Size = UDim2.new(1, 0, 0, 44); entry.BackgroundColor3 = PH_CARD
         entry.BorderSizePixel = 0; entry.LayoutOrder = entryOrder
@@ -766,12 +902,18 @@ else
         plr.BackgroundTransparency = 1; plr.Text = tostring(playing).."/"..tostring(maxP)
         plr.Font = Enum.Font.GothamBold; plr.TextSize = 14
         plr.TextColor3 = PH_ORANGE; plr.TextXAlignment = Enum.TextXAlignment.Left
+
+        -- ping color: green < 80ms, orange < 150ms, red >= 150ms
         local pingC = PH_GREY
-        if ping then pingC = ping < 80 and Color3.fromRGB(100,220,100) or ping < 150 and PH_ORANGE or Color3.fromRGB(220,80,80) end
+        if ping then
+            pingC = ping < 80 and Color3.fromRGB(100,220,100)
+                 or ping < 150 and PH_ORANGE
+                 or Color3.fromRGB(220,80,80)
+        end
         local pingL = Instance.new("TextLabel", entry)
-        pingL.Size = UDim2.new(0, 48, 1, 0); pingL.Position = UDim2.new(0, 70, 0, 0)
+        pingL.Size = UDim2.new(0, 52, 1, 0); pingL.Position = UDim2.new(0, 70, 0, 0)
         pingL.BackgroundTransparency = 1; pingL.Text = ping and (tostring(ping).."ms") or "?ms"
-        pingL.Font = Enum.Font.Gotham; pingL.TextSize = 11
+        pingL.Font = Enum.Font.Gotham; pingL.TextSize = 12
         pingL.TextColor3 = pingC; pingL.TextXAlignment = Enum.TextXAlignment.Left
         local idL = Instance.new("TextLabel", entry)
         idL.Size = UDim2.new(1, -155, 0, 13); idL.Position = UDim2.new(0, 70, 1, -17)
@@ -791,7 +933,8 @@ else
     end
 
     local g6 = GF(6)
-    local BtnRow = Instance.new("Frame", g6)
+    local g7 = GF(7)
+    local BtnRow = Instance.new("Frame", g7)
     BtnRow.Size = UDim2.new(1, 0, 0, 40); BtnRow.BackgroundTransparency = 1; BtnRow.LayoutOrder = 1
     local brl = Instance.new("UIListLayout", BtnRow)
     brl.FillDirection = Enum.FillDirection.Horizontal; brl.Padding = UDim.new(0, 6)
@@ -808,9 +951,29 @@ else
     ClearBtn.TextSize = 13; ClearBtn.TextColor3 = PH_GREY; ClearBtn.BorderSizePixel = 0
     Instance.new("UICorner", ClearBtn).CornerRadius = UDim.new(0, 9)
 
+    -- JOIN BEST button row (desktop)
+    local BestRow = Instance.new("Frame", g7)
+    BestRow.Size = UDim2.new(1, 0, 0, 36); BestRow.BackgroundTransparency = 1; BestRow.LayoutOrder = 2
+
+    local BestBtn = Instance.new("TextButton", BestRow)
+    BestBtn.Size = UDim2.new(1, 0, 1, 0)
+    BestBtn.BackgroundColor3 = Color3.fromRGB(20, 60, 20)
+    BestBtn.Text = "⚡  JOIN BEST SERVER  (lowest ping)"
+    BestBtn.Font = Enum.Font.GothamBold
+    BestBtn.TextSize = 13
+    BestBtn.TextColor3 = Color3.fromRGB(100,220,100)
+    BestBtn.BorderSizePixel = 0
+    Instance.new("UICorner", BestBtn).CornerRadius = UDim.new(0, 9)
+    BestBtn.MouseEnter:Connect(function() BestBtn.BackgroundColor3 = Color3.fromRGB(30, 90, 30) end)
+    BestBtn.MouseLeave:Connect(function() BestBtn.BackgroundColor3 = Color3.fromRGB(20, 60, 20) end)
+    BestBtn.MouseButton1Click:Connect(function()
+        JoinBestServer(SetStatus)
+    end)
+
     local function ClearList()
         for _, c in ipairs(ListScroll:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
         foundCount = 0; checkedCount = 0; entryOrder = 0
+        foundServers = {}
         EmptyTxt.Visible = true; SetStatus("Cleared.", PH_GREY)
     end
 
@@ -829,7 +992,10 @@ else
             for _, s in ipairs(res.data) do
                 if not isSearching then break end
                 checkedCount += 1
-                if s.playing and s.playing <= maxP then foundCount += 1; AddEntry(s.id, s.playing, s.maxPlayers or 0, s.ping); UpdateStatus() end
+                local sPing = s.ping or 9999
+                if s.playing and s.playing <= maxP and sPing <= maxPingFilter then
+                    foundCount += 1; AddEntry(s.id, s.playing, s.maxPlayers or 0, s.ping); UpdateStatus()
+                end
             end
             cursor = res.nextPageCursor or ""; task.wait(0.3)
         until cursor == "" or not isSearching
@@ -842,7 +1008,10 @@ else
         for _, s in ipairs(res.data) do
             if not isSearching then break end
             checkedCount += 1
-            if s.playing and s.playing <= maxP then foundCount += 1; AddEntry(s.id, s.playing, s.maxPlayers or 0, s.ping); UpdateStatus() end
+            local sPing = s.ping or 9999
+            if s.playing and s.playing <= maxP and sPing <= maxPingFilter then
+                foundCount += 1; AddEntry(s.id, s.playing, s.maxPlayers or 0, s.ping); UpdateStatus()
+            end
         end
     end
 
