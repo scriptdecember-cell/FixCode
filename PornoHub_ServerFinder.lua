@@ -167,7 +167,7 @@ local function TBtn(xOff, txt)
     return b
 end
 
-local CloseBtn = TBtn(-34, "✕")
+local CloseBtn = TBtn(-34, "❌")
 CloseBtn.MouseButton1Click:Connect(function()
     guiOpen = false
     Main.Visible = false
