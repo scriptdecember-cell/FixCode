@@ -506,12 +506,23 @@ LogoBadge.Font = Enum.Font.GothamBold; LogoBadge.TextSize = 14
 LogoBadge.TextColor3 = PH_ORANGE; LogoBadge.ZIndex = 6
 Instance.new("UICorner", LogoBadge).CornerRadius = UDim.new(0, 5)
 
-local SubT = Instance.new("TextLabel", TopBar)
-SubT.Size = UDim2.new(0, 110, 1, 0); SubT.Position = UDim2.new(0, 122, 0, 0)
-SubT.BackgroundTransparency = 1; SubT.Text = "Server Finder"
-SubT.Font = Enum.Font.Gotham; SubT.TextSize = 11
-SubT.TextColor3 = Color3.fromRGB(30,30,30)
-SubT.TextXAlignment = Enum.TextXAlignment.Left; SubT.ZIndex = 6
+-- Tab buttons in TopBar
+local TabSF = Instance.new("TextButton", TopBar)
+TabSF.Size = UDim2.new(0, 96, 0, 26); TabSF.Position = UDim2.new(0, 122, 0.5, -13)
+TabSF.BackgroundColor3 = Color3.fromRGB(255,255,255); TabSF.Text = "Server Finder"
+TabSF.Font = Enum.Font.GothamBold; TabSF.TextSize = 10
+TabSF.TextColor3 = PH_ORANGE; TabSF.BorderSizePixel = 0; TabSF.ZIndex = 6
+Instance.new("UICorner", TabSF).CornerRadius = UDim.new(0, 6)
+
+local TabMain = Instance.new("TextButton", TopBar)
+TabMain.Size = UDim2.new(0, 68, 0, 26); TabMain.Position = UDim2.new(0, 224, 0.5, -13)
+TabMain.BackgroundColor3 = Color3.fromRGB(0,0,0,0); TabMain.Text = "Main"
+TabMain.Font = Enum.Font.GothamBold; TabMain.TextSize = 10
+TabMain.BackgroundTransparency = 1
+TabMain.TextColor3 = Color3.fromRGB(30,30,30); TabMain.BorderSizePixel = 0; TabMain.ZIndex = 6
+Instance.new("UICorner", TabMain).CornerRadius = UDim.new(0, 6)
+
+local currentTab = "SF"
 
 local CloseBtn = Instance.new("TextButton", TopBar)
 CloseBtn.Size = UDim2.new(0, 32, 0, 26); CloseBtn.Position = UDim2.new(1,-38,0.5,-13)
@@ -555,6 +566,283 @@ local Content = Instance.new("Frame", Main)
 Content.Size = UDim2.new(1, 0, 1, -46)
 Content.Position = UDim2.new(0, 0, 0, 46)
 Content.BackgroundTransparency = 1
+
+-- ── MAIN TAB FRAME ──────────────────────────────────────────────────────────
+local MainTab = Instance.new("Frame", Main)
+MainTab.Name = "MainTab"
+MainTab.Size = UDim2.new(1, 0, 1, -46)
+MainTab.Position = UDim2.new(0, 0, 0, 46)
+MainTab.BackgroundTransparency = 1
+MainTab.Visible = false
+
+local MScroll = Instance.new("ScrollingFrame", MainTab)
+MScroll.Size = UDim2.new(1, 0, 1, 0)
+MScroll.BackgroundTransparency = 1; MScroll.BorderSizePixel = 0
+MScroll.ScrollBarThickness = 4; MScroll.ScrollBarImageColor3 = PH_ORANGE
+MScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+MScroll.CanvasSize = UDim2.new(0,0,0,0)
+local MSL = Instance.new("UIListLayout", MScroll)
+MSL.Padding = UDim.new(0, 10); MSL.SortOrder = Enum.SortOrder.LayoutOrder
+local MSP = Instance.new("UIPadding", MScroll)
+MSP.PaddingLeft = UDim.new(0,12); MSP.PaddingRight = UDim.new(0,12)
+MSP.PaddingTop = UDim.new(0,10); MSP.PaddingBottom = UDim.new(0,10)
+
+local function MCard(title, lo)
+    local wrap = Instance.new("Frame", MScroll)
+    wrap.Size = UDim2.new(1,0,0,0); wrap.AutomaticSize = Enum.AutomaticSize.Y
+    wrap.BackgroundTransparency = 1; wrap.LayoutOrder = lo
+    local wl = Instance.new("UIListLayout", wrap)
+    wl.Padding = UDim.new(0,5); wl.SortOrder = Enum.SortOrder.LayoutOrder
+    local lbl = Instance.new("TextLabel", wrap)
+    lbl.Size = UDim2.new(1,0,0,14); lbl.BackgroundTransparency = 1
+    lbl.Text = title; lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 10
+    lbl.TextColor3 = PH_GREY; lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.LayoutOrder = 0
+    local card = Instance.new("Frame", wrap)
+    card.Size = UDim2.new(1,0,0,0); card.AutomaticSize = Enum.AutomaticSize.Y
+    card.BackgroundColor3 = PH_CARD; card.BorderSizePixel = 0; card.LayoutOrder = 1
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0,9)
+    local cp = Instance.new("UIPadding", card)
+    cp.PaddingLeft = UDim.new(0,10); cp.PaddingRight = UDim.new(0,10)
+    cp.PaddingTop = UDim.new(0,10); cp.PaddingBottom = UDim.new(0,10)
+    local cl = Instance.new("UIListLayout", card)
+    cl.Padding = UDim.new(0,8); cl.SortOrder = Enum.SortOrder.LayoutOrder
+    return card
+end
+
+local function ToggleRow(parent, label, lo, onEnable, onDisable)
+    local row = Instance.new("Frame", parent)
+    row.Size = UDim2.new(1,0,0,32); row.BackgroundTransparency = 1; row.LayoutOrder = lo
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(1,-52,1,0); lbl.BackgroundTransparency = 1
+    lbl.Text = label; lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 12
+    lbl.TextColor3 = PH_WHITE; lbl.TextXAlignment = Enum.TextXAlignment.Left
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(0,48,0,26); btn.Position = UDim2.new(1,-48,0.5,-13)
+    btn.BackgroundColor3 = Color3.fromRGB(50,50,50); btn.Text = "OFF"
+    btn.Font = Enum.Font.GothamBold; btn.TextSize = 11
+    btn.TextColor3 = PH_GREY; btn.BorderSizePixel = 0
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,6)
+    local state = false
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        if state then
+            btn.BackgroundColor3 = PH_ORANGE; btn.Text = "ON"; btn.TextColor3 = PH_BLACK
+            if onEnable then onEnable() end
+        else
+            btn.BackgroundColor3 = Color3.fromRGB(50,50,50); btn.Text = "OFF"; btn.TextColor3 = PH_GREY
+            if onDisable then onDisable() end
+        end
+    end)
+    return btn
+end
+
+-- ── FPS BOOST ───────────────────────────────────────────────────────────────
+local fpsCard = MCard("FPS BOOST", 1)
+local fpsEnabled = false
+local fpsConn
+
+ToggleRow(fpsCard, "FPS Boost", 0,
+    function()
+        fpsEnabled = true
+        -- Set high quality settings off for better FPS
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        local ls = game:GetService("Lighting")
+        ls.GlobalShadows = false
+        ls.FogEnd = 1e5
+        -- Disable unnecessary effects
+        for _, v in ipairs(ls:GetChildren()) do
+            if v:IsA("BlurEffect") or v:IsA("ColorCorrectionEffect")
+            or v:IsA("SunRaysEffect") or v:IsA("DepthOfFieldEffect") then
+                v.Enabled = false
+            end
+        end
+        -- Uncap FPS via RunService loop trick
+        local rs = game:GetService("RunService")
+        fpsConn = rs.RenderStepped:Connect(function()
+            game:GetService("RunService"):Set3dRenderingEnabled(true)
+        end)
+    end,
+    function()
+        fpsEnabled = false
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
+        local ls = game:GetService("Lighting")
+        ls.GlobalShadows = true
+        for _, v in ipairs(ls:GetChildren()) do
+            if v:IsA("BlurEffect") or v:IsA("ColorCorrectionEffect")
+            or v:IsA("SunRaysEffect") or v:IsA("DepthOfFieldEffect") then
+                v.Enabled = true
+            end
+        end
+        if fpsConn then fpsConn:Disconnect(); fpsConn = nil end
+    end
+)
+
+local sliderLbl = Instance.new("TextLabel", fpsCard)
+sliderLbl.Size = UDim2.new(1,0,0,14); sliderLbl.BackgroundTransparency = 1
+sliderLbl.Text = "Quality Level: Auto"; sliderLbl.Font = Enum.Font.Gotham; sliderLbl.TextSize = 11
+sliderLbl.TextColor3 = PH_GREY; sliderLbl.TextXAlignment = Enum.TextXAlignment.Left
+sliderLbl.LayoutOrder = 1
+
+local qrow = Instance.new("Frame", fpsCard)
+qrow.Size = UDim2.new(1,0,0,28); qrow.BackgroundTransparency = 1; qrow.LayoutOrder = 2
+local qrl = Instance.new("UIListLayout", qrow)
+qrl.FillDirection = Enum.FillDirection.Horizontal; qrl.Padding = UDim.new(0,4)
+qrl.VerticalAlignment = Enum.VerticalAlignment.Center
+
+for i, lvl in ipairs({1, 3, 5, 8, 10}) do
+    local qb = Instance.new("TextButton", qrow)
+    qb.Size = UDim2.new(0,38,0,24); qb.BackgroundColor3 = PH_DARK
+    qb.Text = tostring(lvl); qb.Font = Enum.Font.GothamBold; qb.TextSize = 11
+    qb.TextColor3 = PH_ORANGE; qb.BorderSizePixel = 0
+    Instance.new("UICorner", qb).CornerRadius = UDim.new(0,5)
+    qb.MouseButton1Click:Connect(function()
+        pcall(function()
+            settings().Rendering.QualityLevel = lvl
+            sliderLbl.Text = "Quality Level: " .. lvl
+        end)
+    end)
+end
+
+-- ── ANTI LAG ────────────────────────────────────────────────────────────────
+local lagCard = MCard("ANTI LAG", 2)
+local antiLagConn
+
+ToggleRow(lagCard, "Anti Lag", 0,
+    function()
+        -- Reduce workspace detail
+        workspace.StreamingEnabled = pcall(function()
+            workspace.MeshPartOptimization = Enum.MeshPartOptimization.Disabled
+        end)
+        pcall(function()
+            game:GetService("Players").LocalPlayer.LocalPlayer.ReplicationFocus = workspace.CurrentCamera
+        end)
+        -- Destroy decals/textures/particle emitters
+        antiLagConn = workspace.DescendantAdded:Connect(function(obj)
+            if obj:IsA("Decal") or obj:IsA("Texture")
+            or obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") then
+                pcall(function() obj:Destroy() end)
+            end
+        end)
+        -- Clean existing
+        for _, v in ipairs(workspace:GetDescendants()) do
+            if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") then
+                pcall(function() v:Destroy() end)
+            end
+        end
+    end,
+    function()
+        if antiLagConn then antiLagConn:Disconnect(); antiLagConn = nil end
+    end
+)
+
+local lagInfo = Instance.new("TextLabel", lagCard)
+lagInfo.Size = UDim2.new(1,0,0,28); lagInfo.BackgroundTransparency = 1
+lagInfo.Text = "Removes particles, trails and\nbeams to reduce lag"
+lagInfo.Font = Enum.Font.Gotham; lagInfo.TextSize = 10
+lagInfo.TextColor3 = PH_GREY; lagInfo.TextXAlignment = Enum.TextXAlignment.Left
+lagInfo.TextWrapped = true; lagInfo.LayoutOrder = 1
+
+-- ── NETWORK LAG (NEW SYSTEM) ────────────────────────────────────────────────
+local netCard = MCard("NETWORK LAG", 3)
+local netLagLoop
+local netLagMode = "medium"  -- low / medium / high
+
+local netModes = {
+    low    = {steps = 4,  dist = 12, delay = 0.05},
+    medium = {steps = 8,  dist = 24, delay = 0.02},
+    high   = {steps = 16, dist = 40, delay = 0.01},
+}
+
+local netStatusLbl = Instance.new("TextLabel", netCard)
+netStatusLbl.Size = UDim2.new(1,0,0,14); netStatusLbl.BackgroundTransparency = 1
+netStatusLbl.Text = "Status: OFF"; netStatusLbl.Font = Enum.Font.Gotham; netStatusLbl.TextSize = 11
+netStatusLbl.TextColor3 = PH_GREY; netStatusLbl.TextXAlignment = Enum.TextXAlignment.Left
+netStatusLbl.LayoutOrder = 0
+
+ToggleRow(netCard, "Network Lag", 1,
+    function()
+        netStatusLbl.Text = "Status: ⚡ ACTIVE"
+        netStatusLbl.TextColor3 = PH_ORANGE
+        local lp = game:GetService("Players").LocalPlayer
+        task.spawn(function()
+            while netLagLoop ~= false do
+                local char = lp.Character
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local cfg = netModes[netLagMode]
+                    local origin = hrp.CFrame
+                    -- rapid back-and-forth CFrame shifts desync server replication
+                    for i = 1, cfg.steps do
+                        if netLagLoop == false then break end
+                        local offset = (i % 2 == 0) and cfg.dist or -cfg.dist
+                        hrp.CFrame = origin * CFrame.new(offset, 0, 0)
+                        task.wait(cfg.delay)
+                    end
+                    -- snap back to origin
+                    if hrp and hrp.Parent then hrp.CFrame = origin end
+                end
+                task.wait(0.1)
+            end
+        end)
+        netLagLoop = true
+    end,
+    function()
+        netLagLoop = false
+        netStatusLbl.Text = "Status: OFF"
+        netStatusLbl.TextColor3 = PH_GREY
+    end
+)
+
+-- Mode selector row
+local modeLbl = Instance.new("TextLabel", netCard)
+modeLbl.Size = UDim2.new(1,0,0,14); modeLbl.BackgroundTransparency = 1
+modeLbl.Text = "Intensity:"; modeLbl.Font = Enum.Font.Gotham; modeLbl.TextSize = 11
+modeLbl.TextColor3 = PH_GREY; modeLbl.TextXAlignment = Enum.TextXAlignment.Left
+modeLbl.LayoutOrder = 2
+
+local modeRow = Instance.new("Frame", netCard)
+modeRow.Size = UDim2.new(1,0,0,28); modeRow.BackgroundTransparency = 1; modeRow.LayoutOrder = 3
+local mrl = Instance.new("UIListLayout", modeRow)
+mrl.FillDirection = Enum.FillDirection.Horizontal; mrl.Padding = UDim.new(0,5)
+mrl.VerticalAlignment = Enum.VerticalAlignment.Center
+
+local modeBtnsNet = {}
+for _, m in ipairs({"low","medium","high"}) do
+    local mb = Instance.new("TextButton", modeRow)
+    mb.Size = UDim2.new(0,56,0,26)
+    mb.BackgroundColor3 = m == "medium" and PH_ORANGE or PH_DARK
+    mb.Text = m:sub(1,1):upper()..m:sub(2)
+    mb.Font = Enum.Font.GothamBold; mb.TextSize = 11
+    mb.TextColor3 = m == "medium" and PH_BLACK or PH_GREY; mb.BorderSizePixel = 0
+    Instance.new("UICorner", mb).CornerRadius = UDim.new(0,6)
+    modeBtnsNet[m] = mb
+    mb.MouseButton1Click:Connect(function()
+        netLagMode = m
+        for _, k in pairs(modeBtnsNet) do
+            k.BackgroundColor3 = PH_DARK; k.TextColor3 = PH_GREY
+        end
+        mb.BackgroundColor3 = PH_ORANGE; mb.TextColor3 = PH_BLACK
+    end)
+end
+
+-- ── TAB SWITCHING ───────────────────────────────────────────────────────────
+local function switchTab(tab)
+    currentTab = tab
+    if tab == "SF" then
+        Content.Visible = true; MainTab.Visible = false
+        TabSF.BackgroundTransparency = 0; TabSF.TextColor3 = PH_ORANGE
+        TabMain.BackgroundTransparency = 1; TabMain.TextColor3 = Color3.fromRGB(30,30,30)
+    else
+        Content.Visible = false; MainTab.Visible = true
+        TabMain.BackgroundTransparency = 0; TabMain.TextColor3 = PH_ORANGE; TabMain.BackgroundColor3 = Color3.fromRGB(255,255,255)
+        TabSF.BackgroundTransparency = 1; TabSF.TextColor3 = Color3.fromRGB(30,30,30)
+    end
+end
+
+TabSF.MouseButton1Click:Connect(function() switchTab("SF") end)
+TabMain.MouseButton1Click:Connect(function() switchTab("Main") end)
+
 
 local function JoinBestServer(setStatus)
     if #foundServers == 0 then setStatus("No servers found!", Color3.fromRGB(255,60,60)) return end
